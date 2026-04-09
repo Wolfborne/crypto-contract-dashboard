@@ -1,0 +1,6 @@
+products/crypto-contract-dashboard/node_modules/
+products/crypto-contract-dashboard/dist/
+products/crypto-contract-dashboard/data-runtime/
+products/crypto-contract-dashboard/tsconfig.tsbuildinfo
+products/crypto-contract-dashboard/.env
+products/crypto-contract-dashboard/.env.*
