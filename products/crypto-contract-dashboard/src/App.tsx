@@ -17,7 +17,7 @@ import { buildReadinessSetupKey, evaluateReadinessWithValidationAndRuntime } fro
 import { SYMBOLS } from './data/symbols'
 import { archiveBacktestResult, buildReportDiff, defaultSettings, loadAlertDedupe, loadJournal, loadPaperTrades, loadReportHistory, loadSettings, saveAlertDedupe, saveJournal, savePaperTrades, saveReportHistory, saveSettings, updateReportHistoryItem } from './lib/storage'
 import { buildValidationStatsBySetup } from './lib/validation-domain'
-import type { AlertEvent, BacktestResult, DashboardSignal, DashboardSettings, ExecutionStatus, ExecutionStatusStat, LiveReadiness, MarketSnapshot, PaperEquityPoint, PaperGatePreview, PaperGateSummary, PaperTrade, ReadinessEvaluation, ReadinessRuntimeState, ResearchReportArchiveItem, ResearchReportDiff, SectorHeat, TradeJournalEntry, ValidationStatsMap } from './types'
+import type { AlertEvent, BacktestResult, DashboardSignal, DashboardSettings, DataSourceHealth, ExecutionStatus, ExecutionStatusStat, LiveReadiness, MarketSnapshot, PaperEquityPoint, PaperGatePreview, PaperGateSummary, PaperTrade, ReadinessEvaluation, ReadinessRuntimeState, ResearchReportArchiveItem, ResearchReportDiff, SectorHeat, TradeJournalEntry, ValidationStatsMap } from './types'
 
 function parsePriceText(value: string) {
   const matched = value.match(/-?\d+(?:\.\d+)?/)
@@ -584,6 +584,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
+  const [dataSourceStatus, setDataSourceStatus] = useState<{ coingecko?: DataSourceHealth } | null>(null)
 
   useEffect(() => {
     setSettings(loadSettings())
@@ -610,6 +611,7 @@ export default function App() {
         setSectorHeat(data.sectorHeat)
         setFearGreed(data.fearGreedValue)
         setSummary(data.environmentSummary)
+        setDataSourceStatus(data.dataSourceStatus ?? null)
         setError(null)
       })
       .catch((err) => setError(err.message))
@@ -1045,6 +1047,17 @@ export default function App() {
       </header>
 
       {error ? <div className="card error">数据加载失败：{error}</div> : null}
+      {dataSourceStatus?.coingecko?.degraded ? (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="panel-header">
+            <h3>部分数据模式</h3>
+            <span className="muted">CoinGecko 降级中</span>
+          </div>
+          <div className="muted">市值 / 排名数据暂不可用，当前继续使用 Binance 核心行情、信号、风控与告警链路运行。</div>
+          {dataSourceStatus.coingecko.reason ? <div className="muted" style={{ marginTop: 6 }}>原因：{dataSourceStatus.coingecko.reason}</div> : null}
+          {dataSourceStatus.coingecko.lastSuccessAt ? <div className="muted" style={{ marginTop: 6 }}>CoinGecko 最近一次成功：{dataSourceStatus.coingecko.lastSuccessAt}</div> : null}
+        </div>
+      ) : null}
 
       <section className="grid three">
         <div className="card">

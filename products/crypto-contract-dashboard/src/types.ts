@@ -464,10 +464,20 @@ export type ResearchReportDiff = {
   changed: boolean
 }
 
+export type DataSourceHealth = {
+  ok: boolean
+  degraded?: boolean
+  reason?: string | null
+  lastSuccessAt?: string | null
+}
+
 export type DashboardData = {
   snapshots: MarketSnapshot[]
   signals: DashboardSignal[]
   fearGreedValue: number
   environmentSummary: string
   sectorHeat: SectorHeat[]
+  dataSourceStatus?: {
+    coingecko?: DataSourceHealth
+  }
 }

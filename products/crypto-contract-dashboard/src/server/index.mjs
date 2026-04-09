@@ -472,11 +472,29 @@ async function refreshRuntimeMarketData() {
     trendThreshold: 4,
     extremeVolatilityThreshold: 7,
   }
+  const previousStatus = state?.payload?.dataSourceStatus?.coingecko ?? null
   const cgIds = SYMBOLS.map((s) => s.coingeckoId).join(',')
-  const [fearGreed, coingecko] = await Promise.all([
-    cachedJson('fear-greed', 'https://api.alternative.me/fng/'),
-    cachedJson(`cg:${cgIds}`, `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${cgIds}&order=market_cap_desc&per_page=50&page=1&sparkline=false&price_change_percentage=24h`),
-  ])
+  const fearGreed = await cachedJson('fear-greed', 'https://api.alternative.me/fng/').catch(() => ({ data: [{ value: 50 }] }))
+  let coingecko = []
+  let coingeckoStatus = {
+    ok: true,
+    degraded: false,
+    reason: null,
+    lastSuccessAt: previousStatus?.lastSuccessAt ?? null,
+  }
+  try {
+    coingecko = await cachedJson(`cg:${cgIds}`, `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${cgIds}&order=market_cap_desc&per_page=50&page=1&sparkline=false&price_change_percentage=24h`)
+    coingeckoStatus.lastSuccessAt = new Date().toISOString()
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    console.warn('coingecko degraded, continuing with partial market data', reason)
+    coingeckoStatus = {
+      ok: false,
+      degraded: true,
+      reason,
+      lastSuccessAt: previousStatus?.lastSuccessAt ?? null,
+    }
+  }
   const marketMap = new Map(coingecko.map((coin) => [coin.id, { marketCap: coin.market_cap, marketCapRank: coin.market_cap_rank }]))
   const snapshots = await Promise.all(SYMBOLS.map(async (cfg) => {
     const [ticker, oi, funding, klines] = await Promise.all([
@@ -521,6 +539,10 @@ async function refreshRuntimeMarketData() {
       snapshots,
       signals,
       fearGreedValue: Number(fearGreed?.data?.[0]?.value ?? 50),
+      dataSourceStatus: {
+        ...(state?.payload?.dataSourceStatus ?? {}),
+        coingecko: coingeckoStatus,
+      },
       ...executionLayer,
     },
   })

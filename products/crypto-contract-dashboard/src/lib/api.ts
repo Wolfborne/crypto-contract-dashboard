@@ -161,6 +161,15 @@ async function fetchJson<T>(url: string): Promise<T> {
   return res.json()
 }
 
+async function fetchJsonOptional<T>(url: string, fallback: T): Promise<{ data: T, ok: boolean, reason: string | null }> {
+  try {
+    const data = await fetchJson<T>(url)
+    return { data, ok: true, reason: null }
+  } catch (error) {
+    return { data: fallback, ok: false, reason: error instanceof Error ? error.message : String(error) }
+  }
+}
+
 function sma(values: number[], period: number) {
   const slice = values.slice(-period)
   return slice.reduce((a, b) => a + b, 0) / slice.length
@@ -310,12 +319,12 @@ export async function ackServerAlert(id: string) {
 
 export async function loadDashboardData(settings: DashboardSettings): Promise<DashboardData> {
   const cgIds = SYMBOLS.map((s) => s.coingeckoId).join(',')
-  const [fearGreed, coingecko] = await Promise.all([
-    fetchJson<any>(`${API_BASE}/fear-greed`),
-    fetchJson<any[]>(`${API_BASE}/coingecko/markets?ids=${cgIds}`)
+  const [fearGreed, coingeckoResult] = await Promise.all([
+    fetchJsonOptional<any>(`${API_BASE}/fear-greed`, { data: [{ value: 50 }] }),
+    fetchJsonOptional<any[]>(`${API_BASE}/coingecko/markets?ids=${cgIds}`, [])
   ])
 
-  const marketMap = new Map(coingecko.map((coin) => [coin.id, { marketCap: coin.market_cap, marketCapRank: coin.market_cap_rank }]))
+  const marketMap = new Map(coingeckoResult.data.map((coin) => [coin.id, { marketCap: coin.market_cap, marketCapRank: coin.market_cap_rank }]))
   const snapshots = await Promise.all(SYMBOLS.map(async (cfg) => {
     const [ticker, oi, funding, klines] = await Promise.all([
       fetchJson<any>(`${API_BASE}/binance/ticker24h?symbol=${cfg.symbol}`),
@@ -344,7 +353,7 @@ export async function loadDashboardData(settings: DashboardSettings): Promise<Da
     } satisfies MarketSnapshot
   }))
 
-  const fearGreedValue = Number(fearGreed?.data?.[0]?.value ?? 50)
+  const fearGreedValue = Number(fearGreed.data?.[0]?.value ?? 50)
   const signals = snapshots.map((s) => buildSignal(s, settings)).sort((a, b) => b.score - a.score)
   const sectorMap = new Map<string, { total: number; count: number }>()
   for (const snap of snapshots) {
@@ -355,7 +364,21 @@ export async function loadDashboardData(settings: DashboardSettings): Promise<Da
     sectorMap.set(key, current)
   }
   const sectorHeat: SectorHeat[] = [...sectorMap.entries()].map(([sector, value]) => ({ sector, avg24hChange: value.total / value.count, count: value.count })).sort((a, b) => b.avg24hChange - a.avg24hChange)
-  return { snapshots, signals, fearGreedValue, environmentSummary: summarize(fearGreedValue, snapshots, settings), sectorHeat }
+  return {
+    snapshots,
+    signals,
+    fearGreedValue,
+    environmentSummary: summarize(fearGreedValue, snapshots, settings),
+    sectorHeat,
+    dataSourceStatus: {
+      coingecko: {
+        ok: coingeckoResult.ok,
+        degraded: !coingeckoResult.ok,
+        reason: coingeckoResult.ok ? null : coingeckoResult.reason,
+        lastSuccessAt: coingeckoResult.ok ? new Date().toISOString() : null,
+      }
+    }
+  }
 }
 
 function feeAndSlippageR(entry: number, stop: number) {
