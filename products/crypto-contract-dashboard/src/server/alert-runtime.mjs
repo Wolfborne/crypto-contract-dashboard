@@ -35,6 +35,17 @@ function positionLevelLabel(liveStatus) {
   return liveStatus === 'LIVE_OK' ? '标准仓' : liveStatus === 'LIVE_SMALL' ? '试单仓' : '观察仓'
 }
 
+function directionLabelForSignal(signal) {
+  return signal.strategy === '趋势做空' ? '做空 / SHORT' : '做多 / LONG'
+}
+
+function executionHeadlineForLiveStatus(status) {
+  if (status === 'LIVE_OK') return '🟢 可下注'
+  if (status === 'LIVE_SMALL') return '🟡 小仓试单'
+  if (status === 'NO_TRADE') return '🔴 暂停'
+  return '⚪ 继续观察'
+}
+
 function suggestedLeverage(liveStatus, configuredLeverage = 3) {
   const base = Number.isFinite(configuredLeverage) && configuredLeverage > 0 ? configuredLeverage : 3
   if (liveStatus === 'LIVE_SMALL') return Math.min(base, 3)
@@ -63,21 +74,25 @@ function buildAlertBodyZh(signal, preview, live, sizing, accountEquity = 10000, 
       ? '标准仓 = 当前允许满额风险仓'
       : '仅观察，不建议实盘下单'
   return [
+    executionHeadlineForLiveStatus(live.status),
+    signal.symbol,
+    directionLabelForSignal(signal),
+    '',
+    `入场：${entry.low ? `${entry.low.toFixed(2)} - ${entry.high?.toFixed(2)}` : signal.entry}`,
+    `止损 / 止盈一：${signal.stopLoss} / ${signal.takeProfit1}`,
+    `风险 / 仓位：${sizing ? `$${riskUsd.toFixed(2)}（${formatPct(riskPct)}） / $${notionalUsd.toFixed(2)}（${formatPct(notionalPct)}）` : '- / -'}`,
+    `Why now：${preview.whyNow}`,
+    '',
+    '—— 详细说明 ——',
     `结论：${action}`,
-    `标的：${signal.symbol}`,
     `级别：${live.status}（${positionLevelLabel(live.status)}）`,
     `决策周期：${periods.decision}`,
     `结构周期：${periods.structure}`,
     `策略 / 环境：${signal.strategy} / ${signal.environment}`,
     `执行状态：${preview.executionStatus}（${chineseExecutionStatus(preview.executionStatus)}）`,
     `建议杠杆：${leverage}x`,
-    `入场区间：${entry.low ? `${entry.low.toFixed(2)} - ${entry.high?.toFixed(2)}` : signal.entry}`,
-    `止损 / 止盈一：${signal.stopLoss} / ${signal.takeProfit1}`,
-    `建议风险：${sizing ? `$${riskUsd.toFixed(2)}（约 ${formatPct(riskPct)} equity）` : '-'}`,
-    `建议名义仓位：${sizing ? `$${notionalUsd.toFixed(2)}（约 ${formatPct(notionalPct)} equity）` : '-'}`,
     `仓位级别说明：${sizeRule}`,
     `匹配原因：${preview.matchReason}`,
-    `Why now：${preview.whyNow}`,
     `说明：${live.reason}`,
   ].join('\n')
 }
@@ -111,27 +126,31 @@ export function emitAlertsFromSnapshot(payload) {
         : summary.todayPnl <= summary.dailyLossLimit
           ? '触发日损失限制'
           : '触发周损失限制'
+    const headline = summary.riskMode === 'HARD_STOP' ? '🔴 暂停新增风险' : '🟠 风险收缩'
+    const actionLine = summary.riskMode === 'HARD_STOP' ? '立刻动作：不新增真钱单' : '立刻动作：只允许更克制的小仓'
+    const detailActions = summary.riskMode === 'HARD_STOP'
+      ? ['- 不新增真钱单', '- 已有仓位只做减风险和处理', '- 新机会仅观察，不执行']
+      : ['- 仅允许更克制的小仓', '- 只接受最清晰的 setup', '- 若已有降级 / cooldown，不放大仓位']
     out.push({
       id: crypto.randomUUID(),
       createdAt: now,
       kind: 'RISK_ALERT',
       title: `[风险提醒] ${riskLabel}`,
       body: [
-        `结论：${summary.riskMode === 'HARD_STOP' ? '暂停新增风险' : '仅允许更克制的小仓'}`,
-        '风险级别：RISK_ALERT',
-        `当前模式：${summary.riskMode}`,
-        '生效周期：立即生效',
+        headline,
+        summary.riskMode,
+        actionLine,
         '',
-        `当日损益：${Number(summary.todayPnl).toFixed(2)} / 限制 ${Number(summary.dailyLossLimit).toFixed(2)}`,
-        `本周损益：${Number(summary.weekPnl).toFixed(2)} / 限制 ${Number(summary.weeklyLossLimit).toFixed(2)}`,
+        `当日 / 限制：${Number(summary.todayPnl).toFixed(2)} / ${Number(summary.dailyLossLimit).toFixed(2)}`,
+        `本周 / 限制：${Number(summary.weekPnl).toFixed(2)} / ${Number(summary.weeklyLossLimit).toFixed(2)}`,
         `当前回撤：${Number(summary.drawdown).toFixed(2)}`,
         '',
-        '操作建议：',
-        ...(summary.riskMode === 'HARD_STOP'
-          ? ['- 不新增真钱单', '- 已有仓位只做减风险和处理', '- 新机会仅观察，不执行']
-          : ['- 仅允许更克制的小仓', '- 只接受最清晰的 setup', '- 若已有降级 / cooldown，不放大仓位']),
-        '',
+        '—— 详细说明 ——',
+        `风险模式：${summary.riskMode}`,
+        `结论：${summary.riskMode === 'HARD_STOP' ? '暂停新增风险' : '仅允许更克制的小仓'}`,
         `说明：${riskLabel}`,
+        '操作建议：',
+        ...detailActions,
       ].join('\n'),
       signature: `risk:${riskLabel}`,
       status: 'PENDING',

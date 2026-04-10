@@ -67,6 +67,17 @@ export function evaluateLiveReadiness(
   return { status: 'PAPER_ONLY', reason: '当前更适合继续 paper 观察' }
 }
 
+function directionLabelForSignal(signal: DashboardSignal) {
+  return signal.strategy === '趋势做空' ? '做空 / SHORT' : '做多 / LONG'
+}
+
+function executionHeadlineForLiveStatus(status: LiveReadiness) {
+  if (status === 'LIVE_OK') return '🟢 可下注'
+  if (status === 'LIVE_SMALL') return '🟡 小仓试单'
+  if (status === 'NO_TRADE') return '🔴 暂停'
+  return '⚪ 继续观察'
+}
+
 export function buildAlertBodyZh(
   signal: DashboardSignal,
   preview: PaperGatePreview,
@@ -75,16 +86,21 @@ export function buildAlertBodyZh(
 ) {
   const entry = parseEntryRange(signal.entry)
   return [
-    `${signal.symbol}｜${live.status === 'LIVE_OK' ? '可下注' : live.status === 'LIVE_SMALL' ? '小仓试单' : live.status === 'NO_TRADE' ? '暂停下注' : '仅做观察'}`,
+    executionHeadlineForLiveStatus(live.status),
+    signal.symbol,
+    directionLabelForSignal(signal),
+    '',
+    `入场：${entry.low ? `${entry.low.toFixed(2)} - ${entry.high?.toFixed(2)}` : signal.entry}`,
+    `止损 / 止盈一：${signal.stopLoss} / ${signal.takeProfit1}`,
+    `风险 / 仓位：${sizing ? `$${sizing.riskUsd.toFixed(2)} / $${sizing.notionalUsd.toFixed(2)}` : '- / -'}`,
+    `Why now：${preview.whyNow}`,
+    '',
+    '—— 详细说明 ——',
     `策略：${signal.strategy}`,
     `环境：${signal.environment}`,
     `执行状态：${preview.executionStatus}（${chineseExecutionStatus(preview.executionStatus)}）`,
     `匹配原因：${preview.matchReason}`,
-    `入场区间：${entry.low ? `${entry.low.toFixed(2)} - ${entry.high?.toFixed(2)}` : signal.entry}`,
-    `止损 / 止盈一：${signal.stopLoss} / ${signal.takeProfit1}`,
-    `建议风险 / 名义仓位：${sizing ? `$${sizing.riskUsd.toFixed(2)} / $${sizing.notionalUsd.toFixed(2)}` : '- / -'}`,
-    `中文说明：${live.reason}`,
-    `Why now：${preview.whyNow}`,
+    `说明：${live.reason}`,
   ].join('\n')
 }
 
@@ -126,6 +142,11 @@ export function buildRiskAlertEvent(params: {
       : todayPnl <= dailyLossLimit
         ? '触发日损失限制'
         : '触发周损失限制'
+  const headline = riskMode === 'HARD_STOP' ? '🔴 暂停新增风险' : '🟠 风险收缩'
+  const actionLine = riskMode === 'HARD_STOP' ? '立刻动作：不新增真钱单' : '立刻动作：只允许更克制的小仓'
+  const detailActions = riskMode === 'HARD_STOP'
+    ? ['- 不新增真钱单', '- 已有仓位只做减风险和处理', '- 新机会仅观察，不执行']
+    : ['- 仅允许更克制的小仓', '- 只接受最清晰的 setup', '- 若已有降级 / cooldown，不放大仓位']
 
   return {
     id: crypto.randomUUID(),
@@ -133,10 +154,20 @@ export function buildRiskAlertEvent(params: {
     kind: 'RISK_ALERT',
     title: `[风险提醒] ${riskLabel}`,
     body: [
-      `风险模式：${riskMode}`,
-      `当日损益：${todayPnl.toFixed(2)} / 限制 ${dailyLossLimit.toFixed(2)}`,
-      `本周损益：${weekPnl.toFixed(2)} / 限制 ${weeklyLossLimit.toFixed(2)}`,
+      headline,
+      riskMode,
+      actionLine,
+      '',
+      `当日 / 限制：${todayPnl.toFixed(2)} / ${dailyLossLimit.toFixed(2)}`,
+      `本周 / 限制：${weekPnl.toFixed(2)} / ${weeklyLossLimit.toFixed(2)}`,
       `当前回撤：${drawdown.toFixed(2)}`,
+      '',
+      '—— 详细说明 ——',
+      `风险模式：${riskMode}`,
+      `结论：${riskMode === 'HARD_STOP' ? '暂停新增风险' : '仅允许更克制的小仓'}`,
+      `说明：${riskLabel}`,
+      '操作建议：',
+      ...detailActions,
     ].join('\n'),
     signature: `risk:${riskLabel}`,
     status: 'PENDING',

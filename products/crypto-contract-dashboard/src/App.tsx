@@ -48,6 +48,12 @@ function extractSymbolFromAlertTitle(title: string) {
   return matched?.[1] ?? null
 }
 
+function getTradeDirection(signal: DashboardSignal) {
+  return signal.strategy === '趋势做空'
+    ? { side: 'SHORT', label: '做空 / SHORT' }
+    : { side: 'LONG', label: '做多 / LONG' }
+}
+
 function getReadinessSummaryChips(readiness?: ReadinessEvaluation | null) {
   const chips: Array<{ label: string; tone: 'downgrade' | 'validation'; tooltip: string }> = []
   if (!readiness) return chips
@@ -696,6 +702,8 @@ export default function App() {
     .sort((a, b) => (b.preview?.priorityScore ?? -999) - (a.preview?.priorityScore ?? -999)), [enrichedSignals])
   const top3Executable = executableSignals.slice(0, 3)
   const top5Executable = executableSignals.slice(0, 5)
+  const primaryExecutable = top3Executable[0] ?? null
+  const backupExecutables = top3Executable.slice(1, 3)
   const selectedReadinessEvaluation = selectedReadinessSymbol ? signalReadinessEvaluations[selectedReadinessSymbol] : null
   const selectedReadinessSignal = selectedReadinessSymbol ? signals.find((item) => item.symbol === selectedReadinessSymbol) ?? null : null
   const topFocusSymbols = top3Executable.map(({ signal }) => signal.symbol).slice(0, 2)
@@ -1059,41 +1067,48 @@ export default function App() {
         </div>
       ) : null}
 
-      <section className="grid three">
-        <div className="card">
-          <div className="panel-header">
-            <h3>今日操作建议</h3>
-            <div className={`readiness-chip readiness-${paperGateSummary.riskMode === 'HARD_STOP' ? 'no_trade' : paperGateSummary.riskMode === 'RISK_OFF' ? 'paper_only' : top3Executable.some(({ readiness }) => readiness?.finalDecision === 'LIVE_OK') ? 'live_ok' : top3Executable.some(({ readiness }) => readiness?.finalDecision === 'LIVE_SMALL') ? 'live_small' : 'paper_only'}`}>
-              {paperGateSummary.riskMode}
+      <section className="layer-block decision-layer">
+        <div className="layer-header">
+          <div>
+            <h2>第 1 层 · 决策层</h2>
+            <p>先回答三件事：今天能不能做、最该看谁、如果做该怎么做。</p>
+          </div>
+        </div>
+        <div className="card trade-summary-bar">
+          <div className="trade-summary-main">
+            <div className="trade-summary-block trade-summary-block-primary">
+              <div className="panel-header">
+                <h3>今日交易摘要</h3>
+                <div className={`readiness-chip readiness-${paperGateSummary.riskMode === 'HARD_STOP' ? 'no_trade' : paperGateSummary.riskMode === 'RISK_OFF' ? 'paper_only' : top3Executable.some(({ readiness }) => readiness?.finalDecision === 'LIVE_OK') ? 'live_ok' : top3Executable.some(({ readiness }) => readiness?.finalDecision === 'LIVE_SMALL') ? 'live_small' : 'paper_only'}`}>
+                  {paperGateSummary.riskMode}
+                </div>
+              </div>
+              <div className="trade-summary-headline">{actionModeSummary}</div>
+              <div className="muted">{actionGuardrailSummary}</div>
+              <div className="muted" style={{ marginTop: 6 }}>重点关注：{topFocusSymbols.length ? topFocusSymbols.join(' / ') : '暂无高优先级机会'}</div>
+            </div>
+
+            <div className="trade-summary-block">
+              <div className="trade-summary-label">风险状态</div>
+              <div className="trade-summary-metrics">
+                <div><span className="muted">Open</span><strong>{paperGateSummary.openPositions} / {paperGateSummary.maxOpenPositions}</strong></div>
+                <div><span className="muted">Today</span><strong>{paperGateSummary.todayPnl.toFixed(2)}</strong></div>
+                <div><span className="muted">Week</span><strong>{paperGateSummary.weekPnl.toFixed(2)}</strong></div>
+                <div><span className="muted">DD</span><strong>{paperGateSummary.drawdown.toFixed(2)}</strong></div>
+              </div>
+              <div className="muted">Last Decision：{paperGateSummary.lastDecision ?? '-'}</div>
+            </div>
+
+            <div className="trade-summary-block">
+              <div className="trade-summary-label">30 秒动作</div>
+              <div className="trade-summary-steps muted">
+                <div>1. 先看 Risk Mode</div>
+                <div>2. 再看主机会 Why now</div>
+                <div>3. 只复核 LIVE_OK / LIVE_SMALL</div>
+                <div>4. 自己确认 entry / stop / 仓位</div>
+              </div>
             </div>
           </div>
-          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>{actionModeSummary}</div>
-          <div className="muted" style={{ marginBottom: 8 }}>{actionGuardrailSummary}</div>
-          <div className="muted">重点关注：{topFocusSymbols.length ? topFocusSymbols.join(' / ') : '暂无高优先级机会'}</div>
-        </div>
-        <div className="card">
-          <div className="panel-header">
-            <h3>风险总览</h3>
-            <span className="muted">先看能不能做，再看做什么</span>
-          </div>
-          <div className="grid two calc-results">
-            <div><span className="muted">Risk Mode</span><strong>{paperGateSummary.riskMode}</strong></div>
-            <div><span className="muted">Open Positions</span><strong>{paperGateSummary.openPositions} / {paperGateSummary.maxOpenPositions}</strong></div>
-            <div><span className="muted">Today PnL</span><strong>{paperGateSummary.todayPnl.toFixed(2)}</strong></div>
-            <div><span className="muted">Week PnL</span><strong>{paperGateSummary.weekPnl.toFixed(2)}</strong></div>
-            <div><span className="muted">Drawdown</span><strong>{paperGateSummary.drawdown.toFixed(2)}</strong></div>
-            <div><span className="muted">Last Decision</span><strong>{paperGateSummary.lastDecision ?? '-'}</strong></div>
-          </div>
-        </div>
-        <div className="card">
-          <div className="panel-header">
-            <h3>MVP 使用姿势</h3>
-            <span className="muted">收到提醒后的 30 秒动作</span>
-          </div>
-          <div className="muted">1. 先看 Risk Mode 是否允许新增风险</div>
-          <div className="muted">2. 再看 Top Candidates 的 readiness / why now</div>
-          <div className="muted">3. 只对 LIVE_OK / LIVE_SMALL 做人工复核</div>
-          <div className="muted">4. 仍需自己确认 entry / stop / 仓位，不自动执行</div>
         </div>
       </section>
 
@@ -1112,151 +1127,186 @@ export default function App() {
         </div>
       ) : null}
 
-      {alertEvents.length ? (
-        <section>
-          <div className="card">
-            <div className="panel-header">
-              <h3>告警预览 / 最近提醒</h3>
-              <span className="muted">正式主链路为 app-native Feishu webhook notifier；这里展示最近 alert 内容与状态。</span>
+      <section className="layer-block decision-layer">
+        {highlightedExecutionStatus !== 'ALL' || highlightedMatchReason !== 'ALL' ? (
+          <>
+            <div className="logic-highlight-banner">Drill-down 联动高亮：{highlightedExecutionStatus !== 'ALL' && highlightedMatchReason !== 'ALL' ? `${highlightedExecutionStatus} + ${highlightedMatchReason}` : highlightedExecutionStatus !== 'ALL' ? highlightedExecutionStatus : highlightedMatchReason}</div>
+            <div className="drilldown-chipbar global-drilldown-chipbar">
+              <span className="muted">V11.8 Global Drill-down</span>
+              {highlightedExecutionStatus !== 'ALL' ? <button className="drilldown-chip" onClick={() => setHighlightedExecutionStatus('ALL')}>status: {highlightedExecutionStatus} ×</button> : null}
+              {highlightedMatchReason !== 'ALL' ? <button className="drilldown-chip" onClick={() => setHighlightedMatchReason('ALL')}>reason: {highlightedMatchReason} ×</button> : null}
+              <span className="muted">{highlightedExecutionStatus !== 'ALL' && highlightedMatchReason !== 'ALL' ? '当前为 status + reason 交集' : highlightedExecutionStatus !== 'ALL' ? '当前只按 status' : '当前只按 reason'}</span>
             </div>
-            <div className="alert-feed">
-              {alertEvents.slice(0, 8).map((item) => {
-                const alertSymbol = extractSymbolFromAlertTitle(item.title)
-                const alertReadiness = alertSymbol ? signalReadinessEvaluations[alertSymbol] : null
-                const alertReadinessReason = alertReadiness?.degradeReason ?? alertReadiness?.validationReasons?.[0] ?? alertReadiness?.hardBlockReasons?.[0] ?? alertReadiness?.softBlockReasons?.[0] ?? alertReadiness?.fullReadyChecks?.find((check) => !check.passed)?.message ?? alertReadiness?.trialReadyChecks?.find((check) => !check.passed)?.message ?? null
-                const alertReadinessChips = getReadinessSummaryChips(alertReadiness)
+          </>
+        ) : null}
+
+        {primaryExecutable ? (() => {
+          const { signal, preview, readiness } = primaryExecutable
+          const entry = parseEntryRange(signal.entry)
+          const rr = calcRoughRiskReward(signal)
+          const gate = signalGateEvaluations[signal.symbol]
+          const sizing = calcSizingSuggestion(signal, settings, sizingEquityUsd, currentConcurrentRiskUsd, gate, preview)
+          const readinessReason = readiness?.degradeReason ?? readiness?.validationReasons?.[0] ?? readiness?.hardBlockReasons?.[0] ?? readiness?.softBlockReasons?.[0] ?? readiness?.fullReadyChecks?.find((item) => !item.passed)?.message ?? readiness?.trialReadyChecks?.find((item) => !item.passed)?.message ?? 'ready'
+          const readinessChips = getReadinessSummaryChips(readiness)
+          const direction = getTradeDirection(signal)
+          const executionCommand = readiness?.finalDecision === 'LIVE_OK'
+            ? { icon: '🟢', shortText: '可下注', text: '可下注，先复核后动手', tone: 'ok' }
+            : readiness?.finalDecision === 'LIVE_SMALL'
+              ? { icon: '🟡', shortText: '小仓试单', text: '只做小仓试单', tone: 'small' }
+              : readiness?.finalDecision === 'NO_TRADE'
+                ? { icon: '🔴', shortText: '暂停', text: '暂停，不开新风险', tone: 'stop' }
+                : { icon: '⚪', shortText: '观察', text: '继续观察，不急着出手', tone: 'watch' }
+          return (
+            <div className={`card cockpit-hero ${((highlightedExecutionStatus !== 'ALL' && preview?.executionStatus === highlightedExecutionStatus) || (highlightedMatchReason !== 'ALL' && preview?.matchReason === highlightedMatchReason)) ? 'logic-highlight-card' : ''}`}>
+              <div className="hero-title-strip">
+                <div className={`execution-command execution-command-${executionCommand.tone}`}>{executionCommand.icon} {executionCommand.shortText}</div>
+                <div className="hero-title-symbol">{signal.symbol}</div>
+                <div className="hero-title-direction">{direction.label}</div>
+              </div>
+              <div className="panel-header">
+                <div>
+                  <div className="muted">主机会 / Top 1</div>
+                  <div className="muted">执行口令：{executionCommand.text}</div>
+                  <div className="muted">{signal.environment} / {signal.strategy}</div>
+                </div>
+                <div className="tag-row">
+                  <div className={`readiness-chip readiness-${(readiness?.finalDecision ?? 'PAPER_ONLY').toLowerCase()}`}>{readiness?.finalDecision ?? 'PAPER_ONLY'}</div>
+                  {readinessChips.map((chip) => <div key={`${signal.symbol}-${chip.label}`} title={chip.tooltip} className={`summary-chip ${chip.tone === 'downgrade' ? 'summary-chip-downgrade' : 'summary-chip-validation'}`}>{chip.label}</div>)}
+                  <button className="ghost-btn small-btn" onClick={() => setSelectedReadinessSymbol(signal.symbol)}>详情</button>
+                </div>
+              </div>
+              {((highlightedExecutionStatus !== 'ALL' && preview?.executionStatus === highlightedExecutionStatus) || (highlightedMatchReason !== 'ALL' && preview?.matchReason === highlightedMatchReason)) ? <div className="match-reason-tag">{preview.matchReason}</div> : null}
+              <div className="grid four cockpit-metrics" style={{ marginTop: 12 }}>
+                <div><span className="muted">方向</span><strong>{direction.label}</strong></div>
+                <div><span className="muted">Gate</span><strong>{preview?.label}</strong></div>
+                <div><span className="muted">Entry Zone</span><strong>{entry.low ? `${entry.low.toFixed(2)} - ${entry.high?.toFixed(2)}` : signal.entry}</strong></div>
+                <div><span className="muted">粗略 RR</span><strong>{rr ? rr.toFixed(2) : '-'}</strong></div>
+              </div>
+              <div className="grid three cockpit-metrics secondary">
+                <div><span className="muted">Stop</span><strong>{signal.stopLoss}</strong></div>
+                <div><span className="muted">TP1</span><strong>{signal.takeProfit1}</strong></div>
+                <div><span className="muted">TP2</span><strong>{signal.takeProfit2}</strong></div>
+              </div>
+              <div className="grid four cockpit-metrics secondary">
+                <div><span className="muted">Position Sizing</span><strong>{sizing ? sizing.quantity.toFixed(4) : '-'}</strong></div>
+                <div><span className="muted">Notional Suggestion</span><strong>{sizing ? `$${sizing.notionalUsd.toFixed(2)}` : '-'}</strong></div>
+                <div><span className="muted">Risk $</span><strong>{sizing ? `$${sizing.riskUsd.toFixed(2)}` : '-'}</strong></div>
+                <div><span className="muted">Sizing Equity × Lev</span><strong>{`$${sizingEquityUsd.toFixed(0)} × ${settings.leverage}`}</strong></div>
+              </div>
+              <div className="grid four cockpit-metrics secondary">
+                <div><span className="muted">Pre-cap Risk</span><strong>{sizing ? `$${sizing.preCapRiskUsd.toFixed(2)}` : '-'}</strong></div>
+                <div><span className="muted">Concurrent Risk</span><strong>{`$${currentConcurrentRiskUsd.toFixed(2)}`}</strong></div>
+                <div><span className="muted">Remaining Budget</span><strong>{sizing ? `$${sizing.remainingConcurrentRiskUsd.toFixed(2)}` : '-'}</strong></div>
+                <div><span className="muted">Cap Status</span><strong>{sizing?.capDetail ?? '-'}</strong></div>
+              </div>
+              <div className="why-now">Why now: {preview?.whyNow}</div>
+              <div className="muted readiness-explain">Readiness: {readinessReason}</div>
+              <div className="tag-row" style={{ marginTop: 14 }}>
+                <button className="ghost-btn small-btn" onClick={() => addPaperTrade(signal)}>加入 Paper</button>
+                <button className="ghost-btn small-btn" onClick={() => addJournalFromSignal(signal)}>加入 Journal</button>
+              </div>
+            </div>
+          )
+        })() : (
+          <div className="card"><div className="muted">暂无主机会，今天以观察 / paper 为主。</div></div>
+        )}
+
+        <div className="decision-below-hero">
+          <div className="card shortlist-card">
+            <div className="panel-header">
+              <h3>备选机会</h3>
+              <span className="muted">只保留 2 个，避免分散注意力</span>
+            </div>
+            <div className="shortlist-list backup-list-tight">
+              {backupExecutables.length ? backupExecutables.map(({ signal, preview, readiness }, idx) => {
+                const readinessReason = readiness?.degradeReason ?? readiness?.validationReasons?.[0] ?? readiness?.hardBlockReasons?.[0] ?? readiness?.softBlockReasons?.[0] ?? readiness?.fullReadyChecks?.find((item) => !item.passed)?.message ?? readiness?.trialReadyChecks?.find((item) => !item.passed)?.message ?? 'ready'
+                const readinessChips = getReadinessSummaryChips(readiness)
                 return (
-                <div key={item.id} className={`alert-item ${highlightedAlertId === item.id ? 'alert-item-flash' : ''}`}>
-                  <div className="panel-header">
-                    <div>
-                      <div><strong>{item.title}</strong></div>
-                      <div className="muted">状态：{getAlertStatusLabel(item)}</div>
-                      {alertReadiness ? (
-                        <div className="tag-row" style={{ marginTop: 6 }}>
-                          <div className={`readiness-chip readiness-${alertReadiness.finalDecision.toLowerCase()}`}>{alertReadiness.finalDecision}</div>
-                          {alertReadinessChips.map((chip) => <div key={`${item.id}-${chip.label}`} title={chip.tooltip} className={`summary-chip ${chip.tone === 'downgrade' ? 'summary-chip-downgrade' : 'summary-chip-validation'}`}>{chip.label}</div>)}
-                          {alertSymbol ? <button className="ghost-btn small-btn" onClick={() => setSelectedReadinessSymbol(alertSymbol)}>详情</button> : null}
-                        </div>
-                      ) : null}
-                    </div>
-                    <div className="tag-row">
-                      <button className="ghost-btn small-btn" onClick={async () => { await markServerAlertSent(item.id); setAlertEvents(await loadServerAlerts()) }}>标记已发送</button>
-                      <button className="ghost-btn small-btn" onClick={async () => { await ackServerAlert(item.id); setAlertEvents(await loadServerAlerts()) }}>确认/归档</button>
+                  <div key={`backup-${signal.symbol}`} className={`shortlist-item compact backup-item ${((highlightedExecutionStatus !== 'ALL' && preview?.executionStatus === highlightedExecutionStatus) || (highlightedMatchReason !== 'ALL' && preview?.matchReason === highlightedMatchReason)) ? 'logic-highlight-card' : ''}`}>
+                    <div className="shortlist-rank">#{idx + 2}</div>
+                    <div className="shortlist-main">
+                      <div><strong>{signal.symbol}</strong> <span className={preview?.executionStatus === 'ALLOW_FULL' ? 'pos' : preview?.executionStatus?.includes('BLOCKED') ? 'neg' : 'muted'}>{preview?.label}</span></div>
+                      <div className="tag-row">
+                        <div className={`readiness-chip readiness-${(readiness?.finalDecision ?? 'PAPER_ONLY').toLowerCase()}`}>{readiness?.finalDecision ?? 'PAPER_ONLY'}</div>
+                        {readinessChips.map((chip) => <div key={`${signal.symbol}-${chip.label}`} title={chip.tooltip} className={`summary-chip ${chip.tone === 'downgrade' ? 'summary-chip-downgrade' : 'summary-chip-validation'}`}>{chip.label}</div>)}
+                        <button className="ghost-btn small-btn" onClick={() => setSelectedReadinessSymbol(signal.symbol)}>详情</button>
+                      </div>
+                      <div className="muted">{signal.environment} · {signal.strategy} · Prio {preview?.priorityScore.toFixed(2)}</div>
+                      <div className="why-now compact">{preview?.whyNow}</div>
+                      <div className="muted readiness-explain">Why not Top 1: {readinessReason}</div>
                     </div>
                   </div>
-                  {alertReadinessReason ? <div className="muted readiness-explain">Readiness: {alertReadinessReason}</div> : null}
-                  <pre className="alert-body">{item.body}</pre>
-                </div>
-              )})}
+                )
+              }) : <div className="muted">暂无备选机会。</div>}
             </div>
           </div>
-        </section>
-      ) : null}
 
-      <section className="grid two">
-        <div className="card shortlist-card cockpit-card">
-          {highlightedExecutionStatus !== 'ALL' || highlightedMatchReason !== 'ALL' ? (
-            <>
-              <div className="logic-highlight-banner">Drill-down 联动高亮：{highlightedExecutionStatus !== 'ALL' && highlightedMatchReason !== 'ALL' ? `${highlightedExecutionStatus} + ${highlightedMatchReason}` : highlightedExecutionStatus !== 'ALL' ? highlightedExecutionStatus : highlightedMatchReason}</div>
-              <div className="drilldown-chipbar global-drilldown-chipbar">
-                <span className="muted">V11.8 Global Drill-down</span>
-                {highlightedExecutionStatus !== 'ALL' ? <button className="drilldown-chip" onClick={() => setHighlightedExecutionStatus('ALL')}>status: {highlightedExecutionStatus} ×</button> : null}
-                {highlightedMatchReason !== 'ALL' ? <button className="drilldown-chip" onClick={() => setHighlightedMatchReason('ALL')}>reason: {highlightedMatchReason} ×</button> : null}
-                <span className="muted">{highlightedExecutionStatus !== 'ALL' && highlightedMatchReason !== 'ALL' ? '当前为 status + reason 交集' : highlightedExecutionStatus !== 'ALL' ? '当前只按 status' : '当前只按 reason'}</span>
-              </div>
-            </>
-          ) : null}
-          <div className="panel-header">
-            <h3>Decision Cockpit</h3>
-            <span className="muted">今天最值得人工复核的 3 个机会</span>
-          </div>
-          <div className="shortlist-list cockpit-list">
-            {top3Executable.length ? top3Executable.map(({ signal, preview, readiness }, idx) => {
-              const entry = parseEntryRange(signal.entry)
-              const rr = calcRoughRiskReward(signal)
-              const gate = signalGateEvaluations[signal.symbol]
-              const sizing = calcSizingSuggestion(signal, settings, sizingEquityUsd, currentConcurrentRiskUsd, gate, preview)
-              const readinessReason = readiness?.degradeReason ?? readiness?.validationReasons?.[0] ?? readiness?.hardBlockReasons?.[0] ?? readiness?.softBlockReasons?.[0] ?? readiness?.fullReadyChecks?.find((item) => !item.passed)?.message ?? readiness?.trialReadyChecks?.find((item) => !item.passed)?.message ?? 'ready'
-              const readinessChips = getReadinessSummaryChips(readiness)
-              return (
-                <div key={`top3-${signal.symbol}`} className={`shortlist-item cockpit-item ${((highlightedExecutionStatus !== 'ALL' && preview?.executionStatus === highlightedExecutionStatus) || (highlightedMatchReason !== 'ALL' && preview?.matchReason === highlightedMatchReason)) ? 'logic-highlight-card' : ''}`}>
+          <details className="card decision-mini-card candidate-pool-collapse">
+            <summary><strong>扩展候选池</strong> <span className="muted">前 5 名，默认收起</span></summary>
+            <div className="shortlist-list" style={{ marginTop: 12 }}>
+              {top5Executable.length ? top5Executable.map(({ signal, preview }, idx) => (
+                <div key={`top5-mini-${signal.symbol}`} className="shortlist-item compact">
                   <div className="shortlist-rank">#{idx + 1}</div>
                   <div className="shortlist-main">
-                    <div><strong>{signal.symbol}</strong> <span className="muted">{signal.environment} / {signal.strategy}</span></div>
-                  <div><span className={preview?.executionStatus === 'ALLOW_FULL' ? 'pos' : preview?.executionStatus?.includes('BLOCKED') ? 'neg' : 'muted'}><strong>{preview?.label}</strong></span></div>
-                  <div className="tag-row">
-                    <div className={`readiness-chip readiness-${(readiness?.finalDecision ?? 'PAPER_ONLY').toLowerCase()}`}>{readiness?.finalDecision ?? 'PAPER_ONLY'}</div>
-                    {readinessChips.map((chip) => <div key={`${signal.symbol}-${chip.label}`} title={chip.tooltip} className={`summary-chip ${chip.tone === 'downgrade' ? 'summary-chip-downgrade' : 'summary-chip-validation'}`}>{chip.label}</div>)}
-                    <button className="ghost-btn small-btn" onClick={() => setSelectedReadinessSymbol(signal.symbol)}>详情</button>
-                  </div>
-                  {((highlightedExecutionStatus !== 'ALL' && preview?.executionStatus === highlightedExecutionStatus) || (highlightedMatchReason !== 'ALL' && preview?.matchReason === highlightedMatchReason)) ? <div className="match-reason-tag">{preview.matchReason}</div> : null}
-                    <div className="grid four cockpit-metrics">
-                      <div><span className="muted">Gate</span><strong>{preview?.label}</strong></div>
-                      <div><span className="muted">Priority</span><strong>{preview?.priorityScore.toFixed(2)}</strong></div>
-                      <div><span className="muted">Entry Zone</span><strong>{entry.low ? `${entry.low.toFixed(2)} - ${entry.high?.toFixed(2)}` : signal.entry}</strong></div>
-                      <div><span className="muted">粗略 RR</span><strong>{rr ? rr.toFixed(2) : '-'}</strong></div>
-                    </div>
-                    <div className="grid three cockpit-metrics secondary">
-                      <div><span className="muted">Stop</span><strong>{signal.stopLoss}</strong></div>
-                      <div><span className="muted">TP1</span><strong>{signal.takeProfit1}</strong></div>
-                      <div><span className="muted">TP2</span><strong>{signal.takeProfit2}</strong></div>
-                    </div>
-                    <div className="grid four cockpit-metrics secondary">
-                      <div><span className="muted">Position Sizing</span><strong>{sizing ? sizing.quantity.toFixed(4) : '-'}</strong></div>
-                      <div><span className="muted">Notional Suggestion</span><strong>{sizing ? `$${sizing.notionalUsd.toFixed(2)}` : '-'}</strong></div>
-                      <div><span className="muted">Risk $</span><strong>{sizing ? `$${sizing.riskUsd.toFixed(2)}` : '-'}</strong></div>
-                      <div><span className="muted">Sizing Equity × Lev</span><strong>{`$${sizingEquityUsd.toFixed(0)} × ${settings.leverage}`}</strong></div>
-                    </div>
-                    <div className="grid four cockpit-metrics secondary">
-                      <div><span className="muted">Pre-cap Risk</span><strong>{sizing ? `$${sizing.preCapRiskUsd.toFixed(2)}` : '-'}</strong></div>
-                      <div><span className="muted">Concurrent Risk</span><strong>{`$${currentConcurrentRiskUsd.toFixed(2)}`}</strong></div>
-                      <div><span className="muted">Remaining Budget</span><strong>{sizing ? `$${sizing.remainingConcurrentRiskUsd.toFixed(2)}` : '-'}</strong></div>
-                      <div><span className="muted">Cap Status</span><strong>{sizing?.capDetail ?? '-'}</strong></div>
-                    </div>
-                    <div className="why-now">Why now: {preview?.whyNow}</div>
-                    <div className="muted readiness-explain">Readiness: {readinessReason}</div>
-                  </div>
-                  <div className="cockpit-actions">
-                    <button className="ghost-btn small-btn" onClick={() => addPaperTrade(signal)}>加入 Paper</button>
-                    <button className="ghost-btn small-btn" onClick={() => addJournalFromSignal(signal)}>加入 Journal</button>
+                    <div><strong>{signal.symbol}</strong> <span className="muted">{preview?.label}</span></div>
+                    <div className="muted">{signal.environment} · {signal.strategy}</div>
                   </div>
                 </div>
-              )
-            }) : <div className="muted">暂无可执行 shortlist。</div>}
-          </div>
-        </div>
-
-        <div className="card shortlist-card">
-          <div className="panel-header">
-            <h3>Top 5 候选机会</h3>
-            <span className="muted">按可执行性排序，优先用于人工筛单</span>
-          </div>
-          <div className="shortlist-list">
-            {top5Executable.length ? top5Executable.map(({ signal, preview, readiness }, idx) => {
-              const readinessReason = readiness?.degradeReason ?? readiness?.validationReasons?.[0] ?? readiness?.hardBlockReasons?.[0] ?? readiness?.softBlockReasons?.[0] ?? readiness?.fullReadyChecks?.find((item) => !item.passed)?.message ?? readiness?.trialReadyChecks?.find((item) => !item.passed)?.message ?? 'ready'
-              const readinessChips = getReadinessSummaryChips(readiness)
-              return (
-              <div key={`top5-${signal.symbol}`} className={`shortlist-item compact ${((highlightedExecutionStatus !== 'ALL' && preview?.executionStatus === highlightedExecutionStatus) || (highlightedMatchReason !== 'ALL' && preview?.matchReason === highlightedMatchReason)) ? 'logic-highlight-card' : ''}`}>
-                <div className="shortlist-rank">#{idx + 1}</div>
-                <div className="shortlist-main">
-                  <div><strong>{signal.symbol}</strong> <span className={preview?.executionStatus === 'ALLOW_FULL' ? 'pos' : preview?.executionStatus?.includes('BLOCKED') ? 'neg' : 'muted'}>{preview?.label}</span></div>
-                  <div className="tag-row">
-                    <div className={`readiness-chip readiness-${(readiness?.finalDecision ?? 'PAPER_ONLY').toLowerCase()}`}>{readiness?.finalDecision ?? 'PAPER_ONLY'}</div>
-                    {readinessChips.map((chip) => <div key={`${signal.symbol}-${chip.label}`} title={chip.tooltip} className={`summary-chip ${chip.tone === 'downgrade' ? 'summary-chip-downgrade' : 'summary-chip-validation'}`}>{chip.label}</div>)}
-                    <button className="ghost-btn small-btn" onClick={() => setSelectedReadinessSymbol(signal.symbol)}>详情</button>
-                  </div>
-                  {((highlightedExecutionStatus !== 'ALL' && preview?.executionStatus === highlightedExecutionStatus) || (highlightedMatchReason !== 'ALL' && preview?.matchReason === highlightedMatchReason)) ? <div className="match-reason-tag compact">{preview.matchReason}</div> : null}
-                  <div className="muted">{signal.environment} · {signal.strategy} · Prio {preview?.priorityScore.toFixed(2)}</div>
-                  <div className="why-now compact">{preview?.whyNow}</div>
-                  <div className="muted readiness-explain">Why not LIVE_OK: {readinessReason}</div>
-                </div>
-              </div>
-            )}) : <div className="muted">暂无可执行 shortlist。</div>}
-          </div>
+              )) : <div className="muted">暂无候选机会。</div>}
+            </div>
+          </details>
         </div>
       </section>
 
-      <section className="grid two">
+      <section className="layer-block support-layer">
+        <div className="layer-header">
+          <div>
+            <h2>第 2 层 · 辅助判断层</h2>
+            <p>这里看告警上下文、readiness 细节和更完整的候选解释，不抢首屏决策视线。</p>
+          </div>
+        </div>
+        {alertEvents.length ? (
+          <section>
+            <div className="card">
+              <div className="panel-header">
+                <h3>告警预览 / 最近提醒</h3>
+                <span className="muted">正式主链路为 app-native Feishu webhook notifier；这里展示最近 alert 内容与状态。</span>
+              </div>
+              <div className="alert-feed">
+                {alertEvents.slice(0, 8).map((item) => {
+                  const alertSymbol = extractSymbolFromAlertTitle(item.title)
+                  const alertReadiness = alertSymbol ? signalReadinessEvaluations[alertSymbol] : null
+                  const alertReadinessReason = alertReadiness?.degradeReason ?? alertReadiness?.validationReasons?.[0] ?? alertReadiness?.hardBlockReasons?.[0] ?? alertReadiness?.softBlockReasons?.[0] ?? alertReadiness?.fullReadyChecks?.find((check) => !check.passed)?.message ?? alertReadiness?.trialReadyChecks?.find((check) => !check.passed)?.message ?? null
+                  const alertReadinessChips = getReadinessSummaryChips(alertReadiness)
+                  return (
+                  <div key={item.id} className={`alert-item ${highlightedAlertId === item.id ? 'alert-item-flash' : ''}`}>
+                    <div className="panel-header">
+                      <div>
+                        <div><strong>{item.title}</strong></div>
+                        <div className="muted">状态：{getAlertStatusLabel(item)}</div>
+                        {alertReadiness ? (
+                          <div className="tag-row" style={{ marginTop: 6 }}>
+                            <div className={`readiness-chip readiness-${alertReadiness.finalDecision.toLowerCase()}`}>{alertReadiness.finalDecision}</div>
+                            {alertReadinessChips.map((chip) => <div key={`${item.id}-${chip.label}`} title={chip.tooltip} className={`summary-chip ${chip.tone === 'downgrade' ? 'summary-chip-downgrade' : 'summary-chip-validation'}`}>{chip.label}</div>)}
+                            {alertSymbol ? <button className="ghost-btn small-btn" onClick={() => setSelectedReadinessSymbol(alertSymbol)}>详情</button> : null}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="tag-row">
+                        <button className="ghost-btn small-btn" onClick={async () => { await markServerAlertSent(item.id); setAlertEvents(await loadServerAlerts()) }}>标记已发送</button>
+                        <button className="ghost-btn small-btn" onClick={async () => { await ackServerAlert(item.id); setAlertEvents(await loadServerAlerts()) }}>确认/归档</button>
+                      </div>
+                    </div>
+                    {alertReadinessReason ? <div className="muted readiness-explain">Readiness: {alertReadinessReason}</div> : null}
+                    <pre className="alert-body">{item.body}</pre>
+                  </div>
+                )})}
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        <section className="grid two">
         <PaperTradingPanel topSignal={topSignal} trades={paperTrades} equityCurve={paperEquityCurve} gateSummary={paperGateSummary} executionStats={executionStatusStats} readinessRuntimeState={readinessRuntimeState} validationStatsBySetup={validationStatsBySetup} onSelectExecutionStatus={setHighlightedExecutionStatus} onSelectMatchReason={setHighlightedMatchReason} onAddTrade={addPaperTrade} onUpdateStatus={updatePaperTradeStatus} />
         <div className="card">
           <div className="panel-header">
@@ -1321,12 +1371,22 @@ export default function App() {
         </div>
       </section>
 
-      <section>
-        <SignalTable signals={signals} gatePreviews={signalGatePreviews} readinessEvaluations={signalReadinessEvaluations} highlightedExecutionStatus={highlightedExecutionStatus} highlightedMatchReason={highlightedMatchReason} onClearExecutionStatus={() => setHighlightedExecutionStatus('ALL')} onClearMatchReason={() => setHighlightedMatchReason('ALL')} onAddPaperTrade={addPaperTrade} onOpenReadinessDetail={setSelectedReadinessSymbol} />
       </section>
 
-      <section>
-        <div className="card">
+      <section className="layer-block ops-layer">
+        <div className="layer-header">
+          <div>
+            <h2>第 3 层 · 运维 / 研究层</h2>
+            <p>排查、回测、全量信号和配置都放这里，避免干扰首页第一判断。</p>
+          </div>
+        </div>
+
+        <section>
+          <SignalTable signals={signals} gatePreviews={signalGatePreviews} readinessEvaluations={signalReadinessEvaluations} highlightedExecutionStatus={highlightedExecutionStatus} highlightedMatchReason={highlightedMatchReason} onClearExecutionStatus={() => setHighlightedExecutionStatus('ALL')} onClearMatchReason={() => setHighlightedMatchReason('ALL')} onAddPaperTrade={addPaperTrade} onOpenReadinessDetail={setSelectedReadinessSymbol} />
+        </section>
+
+        <section>
+          <div className="card">
           <div className="panel-header">
             <h3>Feishu Notifier / Queue 面板</h3>
             <div className="tag-row">
@@ -1496,6 +1556,7 @@ export default function App() {
           <JournalPanel entries={journal} onAdd={(entry) => setJournal([entry, ...journal])} />
         </section>
       </details>
+      </section>
     </div>
   )
 }
