@@ -12,7 +12,7 @@ dist/
 !.env.example
 
 # runtime data / local state
-data-runtime/*.json
+data-runtime/*
 !data-runtime/.gitkeep
 
 # local backups / workspace leftovers
