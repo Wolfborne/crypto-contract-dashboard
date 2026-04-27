@@ -40,6 +40,11 @@ Required env:
 - `FEISHU_WEBHOOK_URL`
 - or `LARK_WEBHOOK_URL`
 
+Recommended secret handling:
+- copy `.env.example` to local `.env`
+- keep real webhook URLs only in `.env` or deployment env vars
+- never commit real webhook / token values into git
+
 Alert queue states:
 - `PENDING`: waiting to be sent
 - `FAILED`: send failed, or buffered / cooling down

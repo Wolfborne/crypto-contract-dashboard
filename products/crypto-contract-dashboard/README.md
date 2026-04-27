@@ -25,6 +25,7 @@
 - 风险模式：`NORMAL / RISK_OFF / HARD_STOP`
 - 建议风险金额 / 名义仓位 / sizing caps
 - Feishu 文本提醒
+- 全链暴涨币雷达（Moonshot Radar，基于 DexScreener 多链候选扫描）
 - alert queue 状态机：`PENDING / FAILED / SENT / ACKED`
 - digest buffer / retry / delivery log
 
@@ -36,6 +37,11 @@
 依赖环境变量：
 - `FEISHU_WEBHOOK_URL`
 - 或 `LARK_WEBHOOK_URL`
+
+建议做法：
+- 复制 `.env.example` 为本地 `.env`
+- 把真实 webhook URL 只放在 `.env` 或部署环境变量里
+- 不要把任何真实 webhook / token 明文提交到仓库
 
 说明：
 - `RISK_ALERT` 走即时提醒
@@ -57,6 +63,11 @@ npm run dev
 仅启动服务端：
 ```bash
 npm run start:server
+```
+
+Moonshot Radar API：
+```bash
+curl http://localhost:4174/api/moonshot/candidates
 ```
 
 ## 操作承诺（Operator Promise）
