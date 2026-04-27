@@ -481,6 +481,7 @@ async function refreshRuntimeMarketData() {
   }
   let moonshotRadar = state?.payload?.moonshotRadar ?? { scannedAt: null, sources: {}, candidates: [], alerts: [] }
   const previousStatus = state?.payload?.dataSourceStatus?.coingecko ?? null
+  const previousOiStatus = state?.payload?.dataSourceStatus?.binanceOpenInterest ?? null
   const cgIds = SYMBOLS.map((s) => s.coingeckoId).join(',')
   const fearGreed = await cachedJson('fear-greed', 'https://api.alternative.me/fng/').catch(() => ({ data: [{ value: 50 }] }))
   let coingecko = []
@@ -489,6 +490,12 @@ async function refreshRuntimeMarketData() {
     degraded: false,
     reason: null,
     lastSuccessAt: previousStatus?.lastSuccessAt ?? null,
+  }
+  let openInterestStatus = {
+    ok: true,
+    degraded: false,
+    reason: null,
+    lastSuccessAt: previousOiStatus?.lastSuccessAt ?? null,
   }
   try {
     coingecko = await cachedJson(`cg:${cgIds}`, `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${cgIds}&order=market_cap_desc&per_page=50&page=1&sparkline=false&price_change_percentage=24h`)
@@ -510,12 +517,26 @@ async function refreshRuntimeMarketData() {
     console.warn('moonshot radar refresh failed', error)
   }
   const snapshots = await Promise.all(SYMBOLS.map(async (cfg) => {
-    const [ticker, oi, funding, klines] = await Promise.all([
+    const [ticker, oiResult, funding, klines] = await Promise.all([
       cachedJson(`ticker:${cfg.symbol}`, `https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${cfg.symbol}`),
-      cachedJson(`oi:${cfg.symbol}`, `https://fapi.binance.com/futures/data/openInterestHist?symbol=${cfg.symbol}&period=5m&limit=1`),
+      cachedJson(`oi:${cfg.symbol}`, `https://fapi.binance.com/futures/data/openInterestHist?symbol=${cfg.symbol}&period=5m&limit=1`)
+        .then((data) => ({ data, ok: true, reason: null }))
+        .catch((error) => ({ data: [], ok: false, reason: error instanceof Error ? error.message : String(error) })),
       cachedJson(`funding:${cfg.symbol}:1::`, `https://fapi.binance.com/fapi/v1/fundingRate?symbol=${cfg.symbol}&limit=1`),
       cachedJson(`klines:${cfg.symbol}:1d:30`, `https://fapi.binance.com/fapi/v1/klines?symbol=${cfg.symbol}&interval=1d&limit=30`),
     ])
+    if (!oiResult.ok) {
+      openInterestStatus = {
+        ok: false,
+        degraded: true,
+        reason: oiResult.reason,
+        lastSuccessAt: previousOiStatus?.lastSuccessAt ?? null,
+      }
+      console.warn(`open interest degraded for ${cfg.symbol}: ${oiResult.reason}`)
+    } else {
+      openInterestStatus.lastSuccessAt = new Date().toISOString()
+    }
+    const oi = oiResult.data
     const closes = klines.map((k) => Number(k[4]))
     const price = Number(ticker.lastPrice)
     const ma20 = sma(closes, 20)
@@ -555,6 +576,7 @@ async function refreshRuntimeMarketData() {
       dataSourceStatus: {
         ...(state?.payload?.dataSourceStatus ?? {}),
         coingecko: coingeckoStatus,
+        binanceOpenInterest: openInterestStatus,
       },
       moonshotRadar,
       ...executionLayer,

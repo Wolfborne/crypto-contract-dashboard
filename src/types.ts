@@ -665,5 +665,6 @@ export type DashboardData = {
   sectorHeat: SectorHeat[]
   dataSourceStatus?: {
     coingecko?: DataSourceHealth
+    binanceOpenInterest?: DataSourceHealth
   }
 }
