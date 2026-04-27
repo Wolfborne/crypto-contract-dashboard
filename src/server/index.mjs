@@ -21,12 +21,13 @@ const SYMBOLS = [
 ]
 
 const app = express()
-const PORT = 4174
+const PORT = Number(process.env.PORT) || 4174
 const feishuNotifier = createFeishuWebhookNotifier()
 const TTL_MS = 60 * 1000
 const cache = new Map()
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+const DIST_DIR = path.resolve(__dirname, '../../dist')
 const DATA_DIR = path.resolve(__dirname, '../../data-runtime')
 const ALERTS_FILE = path.join(DATA_DIR, 'alerts.json')
 const RUNTIME_STATE_FILE = path.join(DATA_DIR, 'runtime-state.json')
@@ -689,6 +690,13 @@ app.get('/api/binance/klines', async (req, res) => {
   }
 })
 
+if (fs.existsSync(DIST_DIR)) {
+  app.use(express.static(DIST_DIR))
+  app.get(/^(?!\/api(?:\/|$)).*/, (_, res) => {
+    res.sendFile(path.join(DIST_DIR, 'index.html'))
+  })
+}
+
 setInterval(() => {
   refreshRuntimeMarketData().catch((error) => {
     console.error('server-side market refresh failed', error)
@@ -714,5 +722,5 @@ setInterval(() => {
 }, 30000)
 
 app.listen(PORT, () => {
-  console.log(`crypto dashboard cache server listening on http://localhost:${PORT}`)
+  console.log(`crypto dashboard cache server listening on port ${PORT}`)
 })

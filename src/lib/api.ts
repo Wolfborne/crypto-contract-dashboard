@@ -15,7 +15,7 @@ import type {
   WalkForwardWindow
 } from '../types'
 
-const API_BASE = 'http://localhost:4174/api'
+const API_BASE = import.meta.env.VITE_API_BASE?.replace(/\/$/, '') || '/api'
 const BACKTEST_FEE_PER_SIDE_PCT = 0.02
 const BACKTEST_SLIPPAGE_PER_SIDE_PCT = 0.03
 const BACKTEST_HOLD_BARS = 5
