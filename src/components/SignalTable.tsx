@@ -1,6 +1,28 @@
 import { useMemo, useState } from 'react'
 import type { DashboardSignal, ExecutionStatus, PaperGatePreview, ReadinessEvaluation } from '../types'
 
+function formatRelativeAge(value?: string | number | null, now = Date.now()) {
+  if (!value) return '-'
+  const ts = typeof value === 'number' ? value : new Date(value).getTime()
+  if (Number.isNaN(ts)) return '-'
+  const diffSec = Math.max(0, Math.floor((now - ts) / 1000))
+  if (diffSec < 10) return '刚刚'
+  if (diffSec < 60) return `${diffSec}s 前`
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m 前`
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h 前`
+  return `${Math.floor(diffSec / 86400)}d 前`
+}
+
+function getFreshnessMeta(value?: string | number | null, now = Date.now()) {
+  if (!value) return { label: '未知', className: 'freshness-unknown' }
+  const ts = typeof value === 'number' ? value : new Date(value).getTime()
+  if (Number.isNaN(ts)) return { label: '未知', className: 'freshness-unknown' }
+  const diffSec = Math.max(0, Math.floor((now - ts) / 1000))
+  if (diffSec <= 60) return { label: `🟢 ${formatRelativeAge(ts, now)}`, className: 'freshness-fresh' }
+  if (diffSec <= 180) return { label: `🟡 ${formatRelativeAge(ts, now)}`, className: 'freshness-warn' }
+  return { label: `🔴 ${formatRelativeAge(ts, now)}`, className: 'freshness-stale' }
+}
+
 type GateFilter = 'ALL' | 'ALLOW' | 'RISK_OFF' | 'BLOCKED'
 type GateSort = 'PRIORITY_DESC' | 'GATE_DESC' | 'SCORE_DESC' | 'SYMBOL_ASC'
 
@@ -17,7 +39,7 @@ function executionStatusClass(status?: PaperGatePreview['executionStatus']) {
   return 'neg'
 }
 
-export function SignalTable({ signals, gatePreviews, readinessEvaluations, highlightedExecutionStatus, highlightedMatchReason, onClearExecutionStatus, onClearMatchReason, onAddPaperTrade, onOpenReadinessDetail }: { signals: DashboardSignal[]; gatePreviews?: Record<string, PaperGatePreview>; readinessEvaluations?: Record<string, ReadinessEvaluation>; highlightedExecutionStatus?: 'ALL' | ExecutionStatus; highlightedMatchReason?: 'ALL' | string; onClearExecutionStatus?: () => void; onClearMatchReason?: () => void; onAddPaperTrade?: (signal: DashboardSignal) => void; onOpenReadinessDetail?: (symbol: string) => void }) {
+export function SignalTable({ signals, gatePreviews, readinessEvaluations, highlightedExecutionStatus, highlightedMatchReason, onClearExecutionStatus, onClearMatchReason, onAddPaperTrade, onOpenReadinessDetail, dashboardRefreshedAt, now, disablePaperActions, muteReadinessVisuals }: { signals: DashboardSignal[]; gatePreviews?: Record<string, PaperGatePreview>; readinessEvaluations?: Record<string, ReadinessEvaluation>; highlightedExecutionStatus?: 'ALL' | ExecutionStatus; highlightedMatchReason?: 'ALL' | string; onClearExecutionStatus?: () => void; onClearMatchReason?: () => void; onAddPaperTrade?: (signal: DashboardSignal) => void; onOpenReadinessDetail?: (symbol: string) => void; dashboardRefreshedAt?: string | null; now?: number; disablePaperActions?: boolean; muteReadinessVisuals?: boolean }) {
   const [filter, setFilter] = useState<GateFilter>('ALL')
   const [sortBy, setSortBy] = useState<GateSort>('PRIORITY_DESC')
 
@@ -80,6 +102,7 @@ export function SignalTable({ signals, gatePreviews, readinessEvaluations, highl
         <thead>
           <tr>
             <th>标的</th>
+            <th>时效</th>
             <th>环境</th>
             <th>策略</th>
             <th>评分</th>
@@ -99,9 +122,11 @@ export function SignalTable({ signals, gatePreviews, readinessEvaluations, highl
             const preview = gatePreviews?.[s.symbol]
             const readiness = readinessEvaluations?.[s.symbol]
             const readinessReason = readiness?.hardBlockReasons?.[0] ?? readiness?.softBlockReasons?.[0] ?? readiness?.fullReadyChecks?.find((item) => !item.passed)?.message ?? readiness?.trialReadyChecks?.find((item) => !item.passed)?.message ?? 'ready'
+            const freshness = getFreshnessMeta(dashboardRefreshedAt, now)
             return (
               <tr key={s.symbol} className={(highlightedExecutionStatus !== 'ALL' && highlightedExecutionStatus && preview?.executionStatus === highlightedExecutionStatus) || (highlightedMatchReason !== 'ALL' && highlightedMatchReason && preview?.matchReason === highlightedMatchReason) ? 'logic-highlight-row' : ''}>
                 <td>{s.symbol}</td>
+                <td><span className={`freshness-badge ${freshness.className}`}>{freshness.label}</span></td>
                 <td>{s.environment}</td>
                 <td>{s.strategy}</td>
                 <td>{s.score}</td>
@@ -132,7 +157,7 @@ export function SignalTable({ signals, gatePreviews, readinessEvaluations, highl
                 <td>
                   {readiness ? (
                     <div>
-                      <div className="tag-row">
+                      <div className={`tag-row ${muteReadinessVisuals ? 'stale-visual-muted' : ''}`}>
                         <div className={`readiness-chip readiness-${readiness.finalDecision.toLowerCase()}`}><strong>{readiness.finalDecision}</strong></div>
                         {onOpenReadinessDetail ? <button className="ghost-btn small-btn" onClick={() => onOpenReadinessDetail(s.symbol)}>详情</button> : null}
                       </div>
@@ -141,14 +166,14 @@ export function SignalTable({ signals, gatePreviews, readinessEvaluations, highl
                   ) : <span className="muted">-</span>}
                 </td>
                 <td>
-                  {onAddPaperTrade ? <button className="ghost-btn small-btn" onClick={() => onAddPaperTrade(s)}>加入</button> : null}
+                  {onAddPaperTrade ? <button className="ghost-btn small-btn" disabled={disablePaperActions} title={disablePaperActions ? '数据已过期，请先刷新' : undefined} onClick={() => onAddPaperTrade(s)}>加入</button> : null}
                 </td>
               </tr>
             )
           })}
           {!visibleSignals.length ? (
             <tr>
-              <td colSpan={13} className="muted">当前过滤条件下没有候选信号。</td>
+              <td colSpan={14} className="muted">当前过滤条件下没有候选信号。</td>
             </tr>
           ) : null}
         </tbody>

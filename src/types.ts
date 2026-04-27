@@ -471,6 +471,192 @@ export type DataSourceHealth = {
   lastSuccessAt?: string | null
 }
 
+export type MoonshotScoreMetrics = {
+  liquidityUsd: number
+  volumeM5: number
+  volumeH1: number
+  volumeH6: number
+  volumeH24: number
+  txnsM5: number
+  txnsH1: number
+  txnsH6: number
+  changeM5: number
+  changeH1: number
+  changeH6: number
+  changeH24: number
+  boostAmount: number
+  ageHours: number | null
+}
+
+export type MoonshotScore = {
+  total: number
+  level: 'WATCH' | 'HOT' | 'EXTREME'
+  parts: Record<string, number>
+  penalties: Record<string, number>
+  reasons: string[]
+  metrics: MoonshotScoreMetrics
+  acceleration: {
+    scoreDelta: number
+    volumeH1Ratio: number
+    txnsH1Ratio: number
+    liquidityRatio: number
+    changeH1Delta: number
+    sustainedScans: number
+    upgraded: boolean
+    breakout: boolean
+  }
+}
+
+export type MoonshotCandidate = {
+  chainId: string
+  dexId: string
+  pairAddress: string
+  tokenAddress: string
+  symbol: string
+  name: string
+  quoteSymbol: string
+  priceUsd: number
+  liquidityUsd: number
+  fdv: number
+  marketCap: number
+  url: string
+  pairCreatedAt: number | null
+  boost: { amount: number } | null
+  links: Array<{ type?: string, label?: string, url: string }>
+  riskFlags?: string[]
+  lifecycle?: {
+    stage: 'NEW' | 'HEATING' | 'CONFIRMED' | 'COOLING'
+    reason: string
+    previousStage?: 'NEW' | 'HEATING' | 'CONFIRMED' | 'COOLING' | null
+    changed?: boolean
+    transitionLabel?: string
+    stageSinceAt?: string | null
+    transitionPriority?: number
+    transitionTone?: 'ACTION' | 'WATCH' | 'RISK'
+    transitionReason?: string
+    decisionLine?: string
+    timingHint?: string
+    executionTier?: 'A' | 'B' | 'C' | 'R'
+  }
+  safety?: {
+    provider: string
+    safeToWatch: boolean
+    checks: Array<{ key: string, passed: boolean, message: string }>
+    meta?: { configured?: boolean, implemented?: boolean, target?: string }
+    verdict?: 'PASS' | 'WARN' | 'DOWNGRADE' | 'BLOCK'
+    reason?: string
+  }
+  raveLike?: {
+    total: number
+    label: 'WEAK' | 'MEDIUM' | 'STRONG'
+    reasons: string[]
+    parts: Record<string, number>
+  }
+  score: MoonshotScore
+  feedback?: {
+    label?: 'NO_SIGNAL' | 'POSITIVE_EDGE' | 'NEGATIVE_EDGE' | 'UPSIDE_EDGE' | 'NEUTRAL_EDGE'
+    comboKey?: string
+    regimeComboKey?: string
+    rankingAdjustment?: number
+    alertAdjustment?: number
+    sampleSize?: number
+    weightedSampleSize?: number
+    winRate?: number | null
+    failRate?: number | null
+    weightedWinRate?: number | null
+    weightedFailRate?: number | null
+    confidence?: number
+    confidenceLabel?: 'LOW' | 'MEDIUM' | 'HIGH'
+    decayWeight?: number | null
+    calibrationMode?: 'INSUFFICIENT_SAMPLE' | 'REGIME_MATCHED' | 'REGIME_FALLBACK' | 'GLOBAL_FALLBACK' | 'TONE_POOL_FALLBACK' | 'TONE_FALLBACK' | 'POOL_FALLBACK' | 'TIER_FALLBACK'
+    regimeAligned?: boolean
+    fallbackDepth?: number
+    recentFailRate?: number | null
+    reversalActive?: boolean
+    copyPosture?: 'NEUTRAL' | 'CONFIDENT_ACTION' | 'SOFT_ACTION' | 'RISK_ALERT' | 'LOW_CONFIDENCE' | 'DEFENSIVE'
+    copyNote?: string
+  }
+}
+
+export type MoonshotRadarResponse = {
+  scannedAt: string | null
+  sources: { boostsLatest?: number, boostsTop?: number, profiles?: number, seedCount?: number }
+  candidates: MoonshotCandidate[]
+  alerts: AlertEvent[]
+  replay?: {
+    title: string
+    body: string
+    metrics?: {
+      total?: number
+      confirmed?: number
+      heating?: number
+      cooling?: number
+      breakoutCount?: number
+      avgScoreDelta?: number
+      promotedToConfirm?: number
+      blockedByPolicy?: number
+      emitted?: number
+      tracked?: number
+      resolved?: number
+      wins?: number
+      fails?: number
+      mixes?: number
+    }
+    buckets?: {
+      pool?: Array<{ key: string, total: number, wins: number, fails: number, mixes: number, winRate: number, failRate: number, avgMaxUpPct: number, avgMaxDownPct: number }>
+      executionTier?: Array<{ key: string, total: number, wins: number, fails: number, mixes: number, winRate: number, failRate: number, avgMaxUpPct: number, avgMaxDownPct: number }>
+      lifecycleStage?: Array<{ key: string, total: number, wins: number, fails: number, mixes: number, winRate: number, failRate: number, avgMaxUpPct: number, avgMaxDownPct: number }>
+      transitionTone?: Array<{ key: string, total: number, wins: number, fails: number, mixes: number, winRate: number, failRate: number, avgMaxUpPct: number, avgMaxDownPct: number }>
+      outcome?: Array<{ key: string, total: number, wins: number, fails: number, mixes: number, winRate: number, failRate: number, avgMaxUpPct: number, avgMaxDownPct: number }>
+      combo?: Array<{ key: string, total: number, wins: number, fails: number, mixes: number, winRate: number, failRate: number, avgMaxUpPct: number, avgMaxDownPct: number }>
+      leaderboard?: {
+        bestWinRate?: Array<{ key: string, total: number, wins: number, fails: number, mixes: number, winRate: number, failRate: number, avgMaxUpPct: number, avgMaxDownPct: number }>
+        bestUpside?: Array<{ key: string, total: number, wins: number, fails: number, mixes: number, winRate: number, failRate: number, avgMaxUpPct: number, avgMaxDownPct: number }>
+        worstFailRate?: Array<{ key: string, total: number, wins: number, fails: number, mixes: number, winRate: number, failRate: number, avgMaxUpPct: number, avgMaxDownPct: number }>
+      }
+    }
+  }
+  regime?: {
+    tone: 'ACTION' | 'WATCH' | 'RISK'
+    title: string
+    body: string
+    previousTone?: 'ACTION' | 'WATCH' | 'RISK' | null
+    previousScannedAt?: string | null
+    metrics?: { tierA?: number, tierB?: number, tierC?: number, tierR?: number, prime?: number, early?: number, risk?: number, action?: number, watch?: number, riskTone?: number, total?: number }
+    shift?: {
+      label: string
+      direction: 'INIT' | 'UPSHIFT' | 'DOWNSHIFT' | 'NEUTRALIZE' | 'STRENGTHENING' | 'WEAKENING' | 'STABLE'
+      tone: 'ACTION' | 'WATCH' | 'RISK'
+      body: string
+      strengthScore?: number
+      strengthDelta?: number
+      strengthLabel?: 'LIGHT' | 'MEDIUM' | 'STRONG'
+      sameToneStreak?: number
+      flipsLast4?: number
+      fakeShift?: boolean
+    } | null
+    playbook?: {
+      mode?: 'PRESS_ADVANTAGE' | 'SELECTIVE_ATTACK' | 'CAPITAL_DEFENSE' | 'RISK_CONTROL' | 'WAIT_CONFIRM' | 'BALANCED_SCAN'
+      focusPool?: 'PRIME_POOL' | 'EARLY_POOL' | 'RISK_POOL'
+      alertBias?: 'A_B_FIRST' | 'B_FIRST' | 'RISK_FIRST' | 'CONFIRM_FIRST' | 'B_C_FIRST'
+      reviewCadence?: 'FAST' | 'NORMAL' | 'SLOW'
+      rankingMode?: 'BREAKOUT_MOMENTUM' | 'QUALITY_MOMENTUM' | 'RISK_MIGRATION' | 'DEFENSIVE_FILTER' | 'CONFIRMATION_FIRST' | 'EARLY_DISCOVERY'
+      alertPolicy?: 'AGGRESSIVE_ACTION' | 'BALANCED_ACTION' | 'DEFENSIVE_RISK' | 'CAUTIOUS_RISK' | 'CONFIRM_HEAVY' | 'EARLY_BALANCED'
+      title?: string
+      body?: string
+    } | null
+  }
+  historySummary?: { tracked?: number, lastHistoryWriteAt?: string | null, file?: string | null, cooldowns?: number }
+}
+
+export type ServerHealth = {
+  ok: boolean
+  cacheKeys?: number
+  ttlMs?: number
+  runtimeUpdatedAt?: string | null
+  feishuNotifierEnabled?: boolean
+}
+
 export type DashboardData = {
   snapshots: MarketSnapshot[]
   signals: DashboardSignal[]

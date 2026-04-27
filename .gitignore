@@ -1,6 +1,26 @@
-products/crypto-contract-dashboard/node_modules/
-products/crypto-contract-dashboard/dist/
-products/crypto-contract-dashboard/data-runtime/
-products/crypto-contract-dashboard/tsconfig.tsbuildinfo
-products/crypto-contract-dashboard/.env
-products/crypto-contract-dashboard/.env.*
+# dependencies
+node_modules/
+
+# build output
+dist/
+.vite/
+*.tsbuildinfo
+
+# local env / secrets
+.env
+.env.*
+!.env.example
+
+# runtime data / local state
+data-runtime/*.json
+!data-runtime/.gitkeep
+
+# local backups / workspace leftovers
+.trash/
+
+# local logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

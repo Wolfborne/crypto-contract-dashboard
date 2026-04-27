@@ -9,6 +9,8 @@ import type {
   MonthlyStat,
   ParameterScanRow,
   SectorHeat,
+  MoonshotRadarResponse,
+  ServerHealth,
   StrategyBreakdown,
   WalkForwardWindow
 } from '../types'
@@ -234,6 +236,10 @@ function summarize(fearGreedValue: number, snapshots: MarketSnapshot[], settings
   return '市场偏中性震荡，信号标准要更苛刻，不追中间位置。'
 }
 
+export async function loadServerHealth(): Promise<ServerHealth> {
+  return fetchJson(`${API_BASE}/health`)
+}
+
 export async function loadNotifierStatus(): Promise<{ ok: boolean; provider: string; enabled: boolean; configured: boolean; maskedWebhook: string | null }> {
   return fetchJson(`${API_BASE}/notifier/status`)
 }
@@ -285,6 +291,10 @@ export async function syncRuntimeState(payload: unknown): Promise<{ ok: boolean;
 export async function loadServerAlerts(status?: 'PENDING' | 'SENT' | 'ACKED'): Promise<AlertEvent[]> {
   const url = status ? `${API_BASE}/alerts?status=${status}` : `${API_BASE}/alerts`
   return fetchJson(url)
+}
+
+export async function loadMoonshotCandidates(): Promise<MoonshotRadarResponse> {
+  return fetchJson(`${API_BASE}/moonshot/candidates`)
 }
 
 export async function emitServerAlerts(payload: { signals: Array<{ signal: DashboardSignal; preview: any; live: any; sizing: any }>; paperGateSummary: any }): Promise<{ ok: boolean; emitted: number; added: number; total: number }> {

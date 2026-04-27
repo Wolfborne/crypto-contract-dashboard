@@ -57,6 +57,7 @@ thead th { color: #7cd4ff; font-weight: 600; }
 .primary-btn, .ghost-btn { border-radius: 10px; padding: 10px 14px; cursor: pointer; }
 .primary-btn { background: #1f8fff; color: #fff; border: none; margin-top: 12px; }
 .ghost-btn { background: transparent; color: #d7e7ff; border: 1px solid #2d4059; }
+.ghost-btn:disabled, .primary-btn:disabled { opacity: 0.45; cursor: not-allowed; filter: grayscale(0.15); }
 .journal-form { margin-top: 16px; margin-bottom: 12px; }
 .journal-table-wrap { margin-top: 18px; overflow: auto; }
 .report-layout { display: grid; gap: 16px; }
@@ -106,6 +107,7 @@ thead th { color: #7cd4ff; font-weight: 600; }
 .execution-command-watch { border-color: #586981; background: #182232; color: #d3deea; }
 .cockpit-hero h3 { font-size: 32px; }
 .cockpit-hero .why-now { font-size: 14px; color: #e3f2ff; }
+.hero-stale-mask { margin-top: 12px; padding: 10px 12px; border-radius: 12px; border: 1px dashed rgba(255,143,143,0.55); background: rgba(94,28,28,0.5); color: #ffd6d6; font-weight: 700; }
 .decision-below-hero { margin-top: 16px; display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 16px; align-items: start; }
 .backup-list-tight { gap: 8px; }
 .backup-item { background: #0d1625; }
@@ -147,6 +149,9 @@ thead th { color: #7cd4ff; font-weight: 600; }
 .alert-item { padding: 12px; border-radius: 12px; background: #101a2a; border: 1px solid #223246; }
 .alert-item-flash { border-color: #7ec8ff; box-shadow: 0 0 0 1px rgba(126,200,255,0.45) inset, 0 0 24px rgba(79,163,255,0.16); }
 .alert-body { margin: 8px 0 0; white-space: pre-wrap; font: inherit; color: #cfe6ff; }
+.stale-banner { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; padding: 14px 16px; border-radius: 14px; border: 1px solid; box-shadow: 0 10px 28px rgba(0,0,0,0.18); }
+.stale-banner-warn { background: rgba(70,53,18,0.82); border-color: rgba(255,211,122,0.45); color: #ffe8b7; }
+.stale-banner-danger { background: rgba(94,28,28,0.82); border-color: rgba(255,143,143,0.45); color: #ffd6d6; }
 .toast-banner { position: sticky; top: 10px; z-index: 60; margin-bottom: 12px; padding: 10px 14px; border-radius: 12px; border: 1px solid #3b6ea0; background: rgba(19,37,60,0.94); color: #d8eeff; box-shadow: 0 10px 28px rgba(0,0,0,0.22); }
 .modal-backdrop { position: fixed; inset: 0; z-index: 120; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(5,10,18,0.7); backdrop-filter: blur(4px); }
 .modal-card { width: min(560px, 100%); padding: 16px; border-radius: 16px; border: 1px solid #2f4d72; background: #0f1827; box-shadow: 0 24px 60px rgba(0,0,0,0.38); }
@@ -167,8 +172,70 @@ thead th { color: #7cd4ff; font-weight: 600; }
 .summary-chip { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; }
 .summary-chip-downgrade { border: 1px solid rgba(255,143,143,0.45); background: rgba(94,28,28,0.72); color: #ffd0d0; }
 .summary-chip-validation { border: 1px solid rgba(255,211,122,0.45); background: rgba(70,53,18,0.75); color: #ffe3a3; }
+.moonshot-tone-action { border: 1px solid rgba(124,242,154,0.45); background: rgba(21,66,36,0.72); color: #c9ffd7; }
+.moonshot-tone-watch { border: 1px solid rgba(255,211,122,0.45); background: rgba(70,53,18,0.75); color: #ffe3a3; }
+.moonshot-tone-risk { border: 1px solid rgba(255,143,143,0.45); background: rgba(94,28,28,0.72); color: #ffd0d0; }
+.moonshot-tier-a { border: 1px solid rgba(124,242,154,0.45); background: rgba(21,66,36,0.72); color: #c9ffd7; }
+.moonshot-tier-b { border: 1px solid rgba(132,205,255,0.45); background: rgba(24,58,92,0.72); color: #cfeaff; }
+.moonshot-tier-c { border: 1px solid rgba(255,211,122,0.45); background: rgba(70,53,18,0.75); color: #ffe3a3; }
+.moonshot-tier-r { border: 1px solid rgba(255,143,143,0.45); background: rgba(94,28,28,0.72); color: #ffd0d0; }
+.freshness-badge, .freshness-inline { display: inline-flex; align-items: center; width: fit-content; padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; border: 1px solid transparent; }
+.freshness-inline { margin-top: 4px; }
+.freshness-fresh { color: #c9ffd7; background: rgba(21,66,36,0.72); border-color: rgba(124,242,154,0.45); }
+.freshness-warn { color: #ffe3a3; background: rgba(70,53,18,0.75); border-color: rgba(255,211,122,0.45); }
+.freshness-stale { color: #ffd0d0; background: rgba(94,28,28,0.72); border-color: rgba(255,143,143,0.45); }
+.freshness-unknown { color: #d3deea; background: #182232; border-color: #586981; }
+.moonshot-card { min-height: 360px; }
+.moonshot-regime-box { margin-bottom: 12px; padding: 12px 14px; border-radius: 14px; border: 1px solid #27415f; background: #101a2a; }
+.moonshot-regime-title { font-weight: 800; margin-bottom: 4px; }
+.moonshot-regime-body { line-height: 1.5; }
+.moonshot-regime-shift { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); line-height: 1.5; }
+.moonshot-regime-shift strong { display: block; margin-bottom: 4px; }
+.moonshot-regime-playbook { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); line-height: 1.5; }
+.moonshot-regime-playbook strong { display: block; margin-bottom: 4px; }
+.moonshot-summary-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.moonshot-summary-grid div, .moonshot-metrics-grid div, .moonshot-score-block { display: flex; flex-direction: column; gap: 4px; }
+.moonshot-pool-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.moonshot-tab-active { border-color: #4fa3ff; box-shadow: 0 0 0 1px rgba(79,163,255,0.35) inset; }
+.moonshot-pool-description { margin-bottom: 8px; }
+.moonshot-pool-hint { margin-bottom: 12px; padding: 10px 12px; border-radius: 12px; border: 1px solid #27415f; background: #101a2a; color: #d8eeff; line-height: 1.5; }
+.moonshot-list { display: grid; gap: 10px; }
+.moonshot-item { padding: 14px; border-radius: 14px; background: #0e1727; border: 1px solid #223246; }
+.moonshot-item-general { background: #0e1727; border-color: #223246; }
+.moonshot-item-prime { background: linear-gradient(180deg, rgba(16,31,21,0.96), rgba(12,22,19,0.96)); border-color: rgba(124,242,154,0.35); box-shadow: inset 0 0 0 1px rgba(124,242,154,0.08); }
+.moonshot-item-early { background: linear-gradient(180deg, rgba(28,24,14,0.96), rgba(20,18,14,0.96)); border-color: rgba(255,211,122,0.30); box-shadow: inset 0 0 0 1px rgba(255,211,122,0.06); }
+.moonshot-item-risk { background: linear-gradient(180deg, rgba(35,18,18,0.96), rgba(24,14,14,0.96)); border-color: rgba(255,143,143,0.32); box-shadow: inset 0 0 0 1px rgba(255,143,143,0.06); }
+.moonshot-item-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.moonshot-score-block strong { font-size: 24px; }
+.moonshot-metrics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 10px; }
+.moonshot-level { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; letter-spacing: .03em; border: 1px solid transparent; }
+.moonshot-level-extreme { color: #ffd6d6; background: rgba(94,28,28,0.75); border-color: rgba(255,143,143,0.45); }
+.moonshot-level-hot { color: #ffe3a3; background: rgba(70,53,18,0.78); border-color: rgba(255,211,122,0.45); }
+.moonshot-level-watch { color: #cfe6ff; background: #13253c; border-color: #3c5f88; }
+.moonshot-reasons, .moonshot-links, .moonshot-risk { line-height: 1.45; }
+.moonshot-decision-line { line-height: 1.5; margin: 4px 0 6px; font-size: 14px; }
+.moonshot-action-hint { margin: 0 0 4px; line-height: 1.45; font-size: 13px; opacity: 0.95; }
+.moonshot-timing-hint { margin: 0 0 8px; line-height: 1.45; font-size: 13px; opacity: 0.9; }
+.moonshot-item-prime .moonshot-decision-line, .moonshot-item-prime .moonshot-action-hint, .moonshot-item-prime .moonshot-timing-hint { color: #d7ffe2; }
+.moonshot-item-early .moonshot-decision-line, .moonshot-item-early .moonshot-action-hint, .moonshot-item-early .moonshot-timing-hint { color: #ffe8b7; }
+.moonshot-item-risk .moonshot-decision-line, .moonshot-item-risk .moonshot-action-hint, .moonshot-item-risk .moonshot-timing-hint { color: #ffd6d6; }
+.moonshot-link-btn { text-decoration: none; }
+.moonshot-detail-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.moonshot-detail-card { padding: 12px; border-radius: 12px; background: #101a2a; border: 1px solid #223246; }
+.moonshot-detail-card h4 { margin: 0 0 8px; color: #d8eeff; font-size: 14px; }
+.moonshot-alert-summary { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.moonshot-check-list { display: grid; gap: 6px; margin-top: 8px; }
+.moonshot-check-item { line-height: 1.45; color: #cfe6ff; }
+.moonshot-safety-watchable { border-color: rgba(124,242,154,0.45); background: rgba(21,66,36,0.72); color: #c9ffd7; }
+.moonshot-safety-caution { border-color: rgba(255,143,143,0.45); background: rgba(94,28,28,0.72); color: #ffd0d0; }
+.moonshot-safety-provider { border-color: rgba(255,211,122,0.45); background: rgba(70,53,18,0.75); color: #ffe3a3; }
+.moonshot-stage-new { border-color: rgba(132, 205, 255, 0.45); background: rgba(24, 58, 92, 0.72); color: #cfeaff; }
+.moonshot-stage-heating { border-color: rgba(255, 190, 92, 0.45); background: rgba(87, 55, 14, 0.75); color: #ffe2ae; }
+.moonshot-stage-confirmed { border-color: rgba(124,242,154,0.45); background: rgba(21,66,36,0.72); color: #c9ffd7; }
+.moonshot-stage-cooling { border-color: rgba(196, 166, 255, 0.45); background: rgba(58, 40, 91, 0.72); color: #e3d6ff; }
+.stale-visual-muted { filter: grayscale(0.95) saturate(0.55); opacity: 0.7; }
 @media (max-width: 900px) {
-  .grid.two, .grid.four, .trade-summary-main, .trade-summary-metrics, .decision-below-hero { grid-template-columns: 1fr; }
-  .hero, .hero-actions, .panel-header { flex-direction: column; align-items: flex-start; }
+  .grid.two, .grid.four, .trade-summary-main, .trade-summary-metrics, .decision-below-hero, .moonshot-summary-grid, .moonshot-metrics-grid, .moonshot-detail-grid { grid-template-columns: 1fr; }
+  .hero, .hero-actions, .panel-header, .moonshot-item-head { flex-direction: column; align-items: flex-start; }
   .cockpit-hero h3, .hero-title-symbol { font-size: 26px; }
 }

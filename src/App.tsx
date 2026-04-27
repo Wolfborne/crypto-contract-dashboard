@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { BacktestPanel } from './components/BacktestPanel'
 import { HistoricalReportViewer } from './components/HistoricalReportViewer'
 import { JournalPanel } from './components/JournalPanel'
@@ -8,16 +8,17 @@ import { PositionCalculator } from './components/PositionCalculator'
 import { ReportHistoryPanel } from './components/ReportHistoryPanel'
 import { ResearchReportPanel } from './components/ResearchReportPanel'
 import { RotationChart } from './components/RotationChart'
+import { MoonshotRadarPanel } from './components/MoonshotRadarPanel'
 import { SectorHeatTable } from './components/SectorHeatTable'
 import { SettingsPanel } from './components/SettingsPanel'
 import { SignalTable } from './components/SignalTable'
-import { ackServerAlert, exportResearchReportHtml, exportResearchReportMarkdown, exportToCsv, flushDigestNow, loadBacktest, loadDashboardData, loadDeliveryLog, loadNotifierQueueSummary, loadNotifierStatus, loadReadinessState, loadServerAlerts, markServerAlertSent, syncRuntimeState, testNotifierSend, updateReadinessStateOnTradeClose as updateReadinessStateOnTradeCloseApi } from './lib/api'
+import { ackServerAlert, exportResearchReportHtml, exportResearchReportMarkdown, exportToCsv, flushDigestNow, loadBacktest, loadDashboardData, loadDeliveryLog, loadMoonshotCandidates, loadNotifierQueueSummary, loadNotifierStatus, loadReadinessState, loadServerAlerts, loadServerHealth, markServerAlertSent, syncRuntimeState, testNotifierSend, updateReadinessStateOnTradeClose as updateReadinessStateOnTradeCloseApi } from './lib/api'
 import { evaluateLiveReadiness as evaluateLiveReadinessDomain, parseEntryRange } from './lib/alert-domain'
 import { buildReadinessSetupKey, evaluateReadinessWithValidationAndRuntime } from './lib/readiness-domain'
 import { SYMBOLS } from './data/symbols'
 import { archiveBacktestResult, buildReportDiff, defaultSettings, loadAlertDedupe, loadJournal, loadPaperTrades, loadReportHistory, loadSettings, saveAlertDedupe, saveJournal, savePaperTrades, saveReportHistory, saveSettings, updateReportHistoryItem } from './lib/storage'
 import { buildValidationStatsBySetup } from './lib/validation-domain'
-import type { AlertEvent, BacktestResult, DashboardSignal, DashboardSettings, DataSourceHealth, ExecutionStatus, ExecutionStatusStat, LiveReadiness, MarketSnapshot, PaperEquityPoint, PaperGatePreview, PaperGateSummary, PaperTrade, ReadinessEvaluation, ReadinessRuntimeState, ResearchReportArchiveItem, ResearchReportDiff, SectorHeat, TradeJournalEntry, ValidationStatsMap } from './types'
+import type { AlertEvent, BacktestResult, DashboardSignal, DashboardSettings, DataSourceHealth, ExecutionStatus, ExecutionStatusStat, LiveReadiness, MarketSnapshot, MoonshotRadarResponse, PaperEquityPoint, PaperGatePreview, PaperGateSummary, PaperTrade, ReadinessEvaluation, ReadinessRuntimeState, ResearchReportArchiveItem, ResearchReportDiff, SectorHeat, ServerHealth, TradeJournalEntry, ValidationStatsMap } from './types'
 
 function parsePriceText(value: string) {
   const matched = value.match(/-?\d+(?:\.\d+)?/)
@@ -46,6 +47,24 @@ function explainCapTrigger(preCapRiskUsd: number, softCappedRiskUsd: number, har
 function extractSymbolFromAlertTitle(title: string) {
   const matched = title.match(/\]\s+([A-Z]{2,10})\b/)
   return matched?.[1] ?? null
+}
+
+function parseMoonshotAlertMeta(title: string, body?: string) {
+  const tone = title.includes('/ ACTION /') ? 'ACTION' : title.includes('/ RISK /') ? 'RISK' : title.includes('/ WATCH /') ? 'WATCH' : null
+  const priority = Number(title.match(/\/ P(\d+)/)?.[1] ?? NaN)
+  const transition = title.includes('TRANSITION_') ? (title.match(/(TRANSITION_[A-Z_]+)/)?.[1] ?? null) : null
+  const executionTier = body?.match(/执行等级：([ABCR])/i)?.[1]?.toUpperCase() ?? null
+  const decisionLine = body?.match(/决策短句：(.*)/)?.[1]?.trim() ?? null
+  const reason = body?.match(/(?:说明：.*?[。]\s*)?([^\n]*(?:质量|确认段|加热区|回落|breakout|Safety|最强形态)[^\n]*)/)?.[1] ?? null
+  return {
+    tone,
+    priority: Number.isFinite(priority) ? priority : null,
+    transition,
+    executionTier,
+    decisionLine,
+    reason,
+    isMoonshot: title.includes('暴涨雷达') || title.includes('状态迁移雷达')
+  }
 }
 
 function getTradeDirection(signal: DashboardSignal) {
@@ -80,6 +99,97 @@ function getAlertStatusLabel(item?: { status?: string; lastDeliveryError?: strin
 function getDeliveryDisplay(item: { ok: boolean; message?: string | null }) {
   if (!item.ok && item.message?.includes('buffered for')) return { label: 'BUFFERED', className: 'muted' }
   return item.ok ? { label: 'SUCCESS', className: 'pos' } : { label: 'FAILED', className: 'neg' }
+}
+
+function formatDateTime(value?: string | number | null) {
+  if (!value) return '-'
+  const date = typeof value === 'number' ? new Date(value) : new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+  return new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(date)
+}
+
+function formatRelativeAge(value?: string | number | null, now = Date.now()) {
+  if (!value) return '-'
+  const ts = typeof value === 'number' ? value : new Date(value).getTime()
+  if (Number.isNaN(ts)) return '-'
+  const diffSec = Math.max(0, Math.floor((now - ts) / 1000))
+  if (diffSec < 10) return '刚刚'
+  if (diffSec < 60) return `${diffSec}s 前`
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m 前`
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h 前`
+  return `${Math.floor(diffSec / 86400)}d 前`
+}
+
+function getFreshnessMeta(value?: string | number | null, now = Date.now()) {
+  if (!value) return { label: '未知', className: 'freshness-unknown' }
+  const ts = typeof value === 'number' ? value : new Date(value).getTime()
+  if (Number.isNaN(ts)) return { label: '未知', className: 'freshness-unknown' }
+  const diffSec = Math.max(0, Math.floor((now - ts) / 1000))
+  if (diffSec <= 60) return { label: `🟢 ${formatRelativeAge(ts, now)}`, className: 'freshness-fresh' }
+  if (diffSec <= 180) return { label: `🟡 ${formatRelativeAge(ts, now)}`, className: 'freshness-warn' }
+  return { label: `🔴 ${formatRelativeAge(ts, now)}`, className: 'freshness-stale' }
+}
+
+function getAlertValidityWindowMs(item?: AlertEvent | null) {
+  if (!item) return 15 * 60 * 1000
+  if (item.kind === 'RISK_ALERT') return 4 * 60 * 60 * 1000
+  if (item.kind === 'LIVE_SMALL') return 30 * 60 * 1000
+  return 15 * 60 * 1000
+}
+
+function getAlertValidityMeta(item?: AlertEvent | null, now = Date.now()) {
+  if (!item?.createdAt) return { expired: false, label: '时效未知', windowLabel: '未知', className: 'freshness-unknown' }
+  const createdAtTs = new Date(item.createdAt).getTime()
+  if (Number.isNaN(createdAtTs)) return { expired: false, label: '时效未知', windowLabel: '未知', className: 'freshness-unknown' }
+  const windowMs = getAlertValidityWindowMs(item)
+  const expired = now - createdAtTs > windowMs
+  const windowMin = Math.round(windowMs / 60000)
+  return {
+    expired,
+    label: expired ? '已过期，仅供复盘' : '当前有效',
+    windowLabel: windowMs >= 3600000 ? `${Math.round(windowMs / 3600000)}h` : `${windowMin}m`,
+    className: expired ? 'freshness-stale' : 'freshness-fresh',
+  }
+}
+
+function moonshotCandidateStableKey(item?: MoonshotRadarResponse['candidates'][number] | null) {
+  if (!item) return ''
+  return [
+    item.chainId,
+    item.pairAddress,
+    item.symbol,
+    item.lifecycle?.stage,
+    item.lifecycle?.transitionTone,
+    item.lifecycle?.executionTier,
+    item.lifecycle?.transitionPriority,
+    item.score?.total,
+    item.feedback?.label,
+    item.feedback?.confidenceLabel,
+    item.feedback?.reversalActive ? 'reversal' : '',
+  ].join('|')
+}
+
+function isMoonshotRadarMeaningfullyEqual(a?: MoonshotRadarResponse | null, b?: MoonshotRadarResponse | null) {
+  if (!a && !b) return true
+  if (!a || !b) return false
+  const aCandidates = a.candidates ?? []
+  const bCandidates = b.candidates ?? []
+  if ((a.regime?.title ?? '') !== (b.regime?.title ?? '')) return false
+  if ((a.regime?.body ?? '') !== (b.regime?.body ?? '')) return false
+  if (aCandidates.length !== bCandidates.length) return false
+  for (let i = 0; i < aCandidates.length; i += 1) {
+    if (moonshotCandidateStableKey(aCandidates[i]) !== moonshotCandidateStableKey(bCandidates[i])) return false
+  }
+  return true
 }
 
 function calcSizingSuggestion(signal: DashboardSignal, settings: DashboardSettings, sizingEquityUsd: number, currentConcurrentRiskUsd: number, gate: ReturnType<typeof evaluatePaperTradeGate> | null, gatePreview?: PaperGatePreview) {
@@ -564,6 +674,7 @@ export default function App() {
   const [settings, setSettings] = useState<DashboardSettings>(defaultSettings)
   const [snapshots, setSnapshots] = useState<MarketSnapshot[]>([])
   const [signals, setSignals] = useState<DashboardSignal[]>([])
+  const [moonshotRadar, setMoonshotRadar] = useState<MoonshotRadarResponse | null>(null)
   const [sectorHeat, setSectorHeat] = useState<SectorHeat[]>([])
   const [fearGreed, setFearGreed] = useState<number>(50)
   const [summary, setSummary] = useState('加载中...')
@@ -591,6 +702,10 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
   const [dataSourceStatus, setDataSourceStatus] = useState<{ coingecko?: DataSourceHealth } | null>(null)
+  const [dashboardRefreshedAt, setDashboardRefreshedAt] = useState<string | null>(null)
+  const [refreshFailureCount, setRefreshFailureCount] = useState(0)
+  const [serverHealth, setServerHealth] = useState<ServerHealth | null>(null)
+  const moonshotRadarRef = useRef<MoonshotRadarResponse | null>(null)
 
   useEffect(() => {
     setSettings(loadSettings())
@@ -598,6 +713,7 @@ export default function App() {
     setPaperTrades(loadPaperTrades())
     setAlertDedupe(loadAlertDedupe())
     loadServerAlerts().then(setAlertEvents).catch(() => setAlertEvents([]))
+    loadMoonshotCandidates().then((next) => { moonshotRadarRef.current = next; setMoonshotRadar(next) }).catch(() => setMoonshotRadar(null))
     loadNotifierStatus().then(setNotifierStatus).catch(() => setNotifierStatus(null))
     loadDeliveryLog().then(setDeliveryLog).catch(() => setDeliveryLog([]))
     loadNotifierQueueSummary().then(setNotifierQueueSummary).catch(() => setNotifierQueueSummary(null))
@@ -611,16 +727,24 @@ export default function App() {
     saveSettings(settings)
     setRefreshing(true)
     loadDashboardData(settings)
-      .then((data) => {
+      .then(async (data) => {
         setSnapshots(data.snapshots)
         setSignals(data.signals)
         setSectorHeat(data.sectorHeat)
         setFearGreed(data.fearGreedValue)
         setSummary(data.environmentSummary)
         setDataSourceStatus(data.dataSourceStatus ?? null)
+        setDashboardRefreshedAt(new Date().toISOString())
+        try {
+          setServerHealth(await loadServerHealth())
+        } catch {}
+        setRefreshFailureCount(0)
         setError(null)
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => {
+        setRefreshFailureCount((x) => x + 1)
+        setError(err.message)
+      })
       .finally(() => setRefreshing(false))
   }, [settings, reloadKey])
 
@@ -707,7 +831,17 @@ export default function App() {
   const selectedReadinessEvaluation = selectedReadinessSymbol ? signalReadinessEvaluations[selectedReadinessSymbol] : null
   const selectedReadinessSignal = selectedReadinessSymbol ? signals.find((item) => item.symbol === selectedReadinessSymbol) ?? null : null
   const topFocusSymbols = top3Executable.map(({ signal }) => signal.symbol).slice(0, 2)
-  const actionModeSummary = paperGateSummary.riskMode === 'HARD_STOP'
+  const signalFreshness = getFreshnessMeta(dashboardRefreshedAt, countdownNow)
+  const serverFreshness = getFreshnessMeta(serverHealth?.runtimeUpdatedAt, countdownNow)
+  const isWarnStale = signalFreshness.className === 'freshness-warn'
+  const isHardStale = signalFreshness.className === 'freshness-stale'
+  const showStalenessBanner = isWarnStale || isHardStale
+  const stalenessBannerTone = isHardStale ? 'stale-banner-danger' : 'stale-banner-warn'
+  const canExecuteSignalActions = !isHardStale
+  const showRefreshFailureBanner = refreshFailureCount >= 3
+  const actionModeSummary = isHardStale
+    ? '数据已过期，先刷新，再决定是否执行'
+    : paperGateSummary.riskMode === 'HARD_STOP'
     ? '暂停新增风险，只看风险处置'
     : paperGateSummary.riskMode === 'RISK_OFF'
       ? '只允许更克制的小仓试单'
@@ -716,11 +850,13 @@ export default function App() {
         : top3Executable.some(({ readiness }) => readiness?.finalDecision === 'LIVE_SMALL')
           ? '以观察和小仓试单为主'
           : '今天以观察 / paper 为主'
-  const actionGuardrailSummary = paperGateSummary.riskMode === 'HARD_STOP'
-    ? '触发 HARD_STOP，停止新增真钱单。'
-    : paperGateSummary.riskMode === 'RISK_OFF'
-      ? '处于 RISK_OFF，所有机会默认降杠杆、降风险。'
-      : `当日损益 ${paperGateSummary.todayPnl.toFixed(2)} / 限制 ${paperGateSummary.dailyLossLimit.toFixed(2)}；本周损益 ${paperGateSummary.weekPnl.toFixed(2)} / 限制 ${paperGateSummary.weeklyLossLimit.toFixed(2)}。`
+  const actionGuardrailSummary = isHardStale
+    ? '当前首页信号超过 3 分钟未刷新，执行按钮进入保护状态。'
+    : paperGateSummary.riskMode === 'HARD_STOP'
+      ? '触发 HARD_STOP，停止新增真钱单。'
+      : paperGateSummary.riskMode === 'RISK_OFF'
+        ? '处于 RISK_OFF，所有机会默认降杠杆、降风险。'
+        : `当日损益 ${paperGateSummary.todayPnl.toFixed(2)} / 限制 ${paperGateSummary.dailyLossLimit.toFixed(2)}；本周损益 ${paperGateSummary.weekPnl.toFixed(2)} / 限制 ${paperGateSummary.weeklyLossLimit.toFixed(2)}。`
 
   useEffect(() => {
     if (!signals.length) return
@@ -741,6 +877,12 @@ export default function App() {
   useEffect(() => {
     const timer = setInterval(() => {
       loadServerAlerts().then(setAlertEvents).catch(() => {})
+      loadMoonshotCandidates().then((next) => {
+        if (!isMoonshotRadarMeaningfullyEqual(moonshotRadarRef.current, next)) {
+          moonshotRadarRef.current = next
+          setMoonshotRadar(next)
+        }
+      }).catch(() => {})
       loadDeliveryLog().then(setDeliveryLog).catch(() => {})
       loadNotifierStatus().then(setNotifierStatus).catch(() => {})
       loadNotifierQueueSummary().then(setNotifierQueueSummary).catch(() => {})
@@ -765,6 +907,13 @@ export default function App() {
     const timer = window.setInterval(() => setCountdownNow(Date.now()), 1000)
     return () => window.clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    if (!dashboardRefreshedAt || refreshing) return
+    const ageMs = countdownNow - new Date(dashboardRefreshedAt).getTime()
+    if (ageMs < 5 * 60 * 1000) return
+    setReloadKey((x) => x + 1)
+  }, [countdownNow, dashboardRefreshedAt, refreshing])
 
   function getCountdownMeta(nextDigestAt?: string | null) {
     if (!nextDigestAt) return { label: '-', tone: 'countdown-neutral' }
@@ -1045,6 +1194,15 @@ export default function App() {
         <div>
           <h1>Crypto Contract Dashboard MVP</h1>
           <p>{summary}</p>
+          <div className="muted" style={{ marginTop: 8 }}>
+            当前时间：{formatDateTime(countdownNow)}
+            {' · '}
+            最近刷新：{dashboardRefreshedAt ? `${formatDateTime(dashboardRefreshedAt)}（${formatRelativeAge(dashboardRefreshedAt, countdownNow)}）` : '-'}
+          </div>
+          <div className="tag-row" style={{ marginTop: 8 }}>
+            <span className={`freshness-badge ${signalFreshness.className}`}>页面信号时效：{signalFreshness.label}</span>
+            <span className={`freshness-badge ${serverFreshness.className}`}>后端引擎时效：{serverFreshness.label}</span>
+          </div>
         </div>
         <div className="hero-actions">
           <div className="badge">定位：人工辅助下单驾驶舱，不做自动下单</div>
@@ -1054,7 +1212,57 @@ export default function App() {
         </div>
       </header>
 
+      {showStalenessBanner ? (
+        <div className={`stale-banner ${stalenessBannerTone}`}>
+          <div>
+            <strong>数据可能过期，请先刷新</strong>
+            <div className="muted">当前信号时效：{signalFreshness.label}。最近刷新：{dashboardRefreshedAt ? formatDateTime(dashboardRefreshedAt) : '-'}。</div>
+          </div>
+          <button className="ghost-btn" onClick={() => setReloadKey((x) => x + 1)}>
+            {refreshing ? '刷新中...' : '立即刷新'}
+          </button>
+        </div>
+      ) : null}
+      {showRefreshFailureBanner ? (
+        <div className="stale-banner stale-banner-danger">
+          <div>
+            <strong>数据源异常，自动刷新已连续失败</strong>
+            <div className="muted">最近连续失败 {refreshFailureCount} 次。请检查接口 / 网络，或手动刷新重试。</div>
+          </div>
+          <button className="ghost-btn" onClick={() => setReloadKey((x) => x + 1)}>
+            {refreshing ? '刷新中...' : '重试刷新'}
+          </button>
+        </div>
+      ) : null}
       {error ? <div className="card error">数据加载失败：{error}</div> : null}
+      {(serverHealth?.runtimeUpdatedAt || dataSourceStatus?.coingecko) ? (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="panel-header">
+            <h3>数据新鲜度面板</h3>
+            <span className="muted">区分页面刷新与后端运行状态</span>
+          </div>
+          <div className="grid two calc-results">
+            <div>
+              <span className="muted">页面信号</span>
+              <strong>{dashboardRefreshedAt ? formatDateTime(dashboardRefreshedAt) : '-'}</strong>
+              <div className={`freshness-inline ${signalFreshness.className}`}>{signalFreshness.label}</div>
+            </div>
+            <div>
+              <span className="muted">后端行情引擎</span>
+              <strong>{serverHealth?.runtimeUpdatedAt ? formatDateTime(serverHealth.runtimeUpdatedAt) : '-'}</strong>
+              <div className={`freshness-inline ${serverFreshness.className}`}>{serverFreshness.label}</div>
+            </div>
+          </div>
+          <div className="muted" style={{ marginTop: 10 }}>
+            判读：如果页面红灯但后端还是绿/黄，通常是前端页面挂久了；如果后端也红灯，说明不只是页面问题，后端行情刷新本身也可能滞后。
+          </div>
+          {dataSourceStatus?.coingecko ? (
+            <div className="muted" style={{ marginTop: 6 }}>
+              CoinGecko：{dataSourceStatus.coingecko.degraded ? '降级中' : '正常'}{dataSourceStatus.coingecko.lastSuccessAt ? ` · 最近成功 ${formatDateTime(dataSourceStatus.coingecko.lastSuccessAt)}` : ''}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {dataSourceStatus?.coingecko?.degraded ? (
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="panel-header">
@@ -1149,13 +1357,15 @@ export default function App() {
           const readinessReason = readiness?.degradeReason ?? readiness?.validationReasons?.[0] ?? readiness?.hardBlockReasons?.[0] ?? readiness?.softBlockReasons?.[0] ?? readiness?.fullReadyChecks?.find((item) => !item.passed)?.message ?? readiness?.trialReadyChecks?.find((item) => !item.passed)?.message ?? 'ready'
           const readinessChips = getReadinessSummaryChips(readiness)
           const direction = getTradeDirection(signal)
-          const executionCommand = readiness?.finalDecision === 'LIVE_OK'
-            ? { icon: '🟢', shortText: '可下注', text: '可下注，先复核后动手', tone: 'ok' }
-            : readiness?.finalDecision === 'LIVE_SMALL'
-              ? { icon: '🟡', shortText: '小仓试单', text: '只做小仓试单', tone: 'small' }
-              : readiness?.finalDecision === 'NO_TRADE'
-                ? { icon: '🔴', shortText: '暂停', text: '暂停，不开新风险', tone: 'stop' }
-                : { icon: '⚪', shortText: '观察', text: '继续观察，不急着出手', tone: 'watch' }
+          const executionCommand = isHardStale
+            ? { icon: '⛔', shortText: '已过期', text: '数据已过期，请先刷新', tone: 'stop' }
+            : readiness?.finalDecision === 'LIVE_OK'
+              ? { icon: '🟢', shortText: '可下注', text: '可下注，先复核后动手', tone: 'ok' }
+              : readiness?.finalDecision === 'LIVE_SMALL'
+                ? { icon: '🟡', shortText: '小仓试单', text: '只做小仓试单', tone: 'small' }
+                : readiness?.finalDecision === 'NO_TRADE'
+                  ? { icon: '🔴', shortText: '暂停', text: '暂停，不开新风险', tone: 'stop' }
+                  : { icon: '⚪', shortText: '观察', text: '继续观察，不急着出手', tone: 'watch' }
           return (
             <div className={`card cockpit-hero ${((highlightedExecutionStatus !== 'ALL' && preview?.executionStatus === highlightedExecutionStatus) || (highlightedMatchReason !== 'ALL' && preview?.matchReason === highlightedMatchReason)) ? 'logic-highlight-card' : ''}`}>
               <div className="hero-title-strip">
@@ -1169,8 +1379,9 @@ export default function App() {
                   <div className="muted">执行口令：{executionCommand.text}</div>
                   <div className="muted">{signal.environment} / {signal.strategy}</div>
                 </div>
-                <div className="tag-row">
+                <div className={`tag-row ${isHardStale ? 'stale-visual-muted' : ''}`}>
                   <div className={`readiness-chip readiness-${(readiness?.finalDecision ?? 'PAPER_ONLY').toLowerCase()}`}>{readiness?.finalDecision ?? 'PAPER_ONLY'}</div>
+                  <div className={`freshness-badge ${signalFreshness.className}`}>时效：{signalFreshness.label}</div>
                   {readinessChips.map((chip) => <div key={`${signal.symbol}-${chip.label}`} title={chip.tooltip} className={`summary-chip ${chip.tone === 'downgrade' ? 'summary-chip-downgrade' : 'summary-chip-validation'}`}>{chip.label}</div>)}
                   <button className="ghost-btn small-btn" onClick={() => setSelectedReadinessSymbol(signal.symbol)}>详情</button>
                 </div>
@@ -1199,11 +1410,12 @@ export default function App() {
                 <div><span className="muted">Remaining Budget</span><strong>{sizing ? `$${sizing.remainingConcurrentRiskUsd.toFixed(2)}` : '-'}</strong></div>
                 <div><span className="muted">Cap Status</span><strong>{sizing?.capDetail ?? '-'}</strong></div>
               </div>
+              {isHardStale ? <div className="hero-stale-mask">当前排序与主机会仅供参考，需刷新后再执行。</div> : null}
               <div className="why-now">Why now: {preview?.whyNow}</div>
               <div className="muted readiness-explain">Readiness: {readinessReason}</div>
               <div className="tag-row" style={{ marginTop: 14 }}>
-                <button className="ghost-btn small-btn" onClick={() => addPaperTrade(signal)}>加入 Paper</button>
-                <button className="ghost-btn small-btn" onClick={() => addJournalFromSignal(signal)}>加入 Journal</button>
+                <button className="ghost-btn small-btn" disabled={!canExecuteSignalActions} title={!canExecuteSignalActions ? '数据已过期，请先刷新' : undefined} onClick={() => addPaperTrade(signal)}>加入 Paper</button>
+                <button className="ghost-btn small-btn" disabled={!canExecuteSignalActions} title={!canExecuteSignalActions ? '数据已过期，请先刷新' : undefined} onClick={() => addJournalFromSignal(signal)}>加入 Journal</button>
               </div>
             </div>
           )
@@ -1217,6 +1429,7 @@ export default function App() {
               <h3>备选机会</h3>
               <span className="muted">只保留 2 个，避免分散注意力</span>
             </div>
+            {isHardStale ? <div className="hero-stale-mask" style={{ marginBottom: 10 }}>当前排序仅供参考，需刷新后再执行。</div> : null}
             <div className="shortlist-list backup-list-tight">
               {backupExecutables.length ? backupExecutables.map(({ signal, preview, readiness }, idx) => {
                 const readinessReason = readiness?.degradeReason ?? readiness?.validationReasons?.[0] ?? readiness?.hardBlockReasons?.[0] ?? readiness?.softBlockReasons?.[0] ?? readiness?.fullReadyChecks?.find((item) => !item.passed)?.message ?? readiness?.trialReadyChecks?.find((item) => !item.passed)?.message ?? 'ready'
@@ -1226,12 +1439,13 @@ export default function App() {
                     <div className="shortlist-rank">#{idx + 2}</div>
                     <div className="shortlist-main">
                       <div><strong>{signal.symbol}</strong> <span className={preview?.executionStatus === 'ALLOW_FULL' ? 'pos' : preview?.executionStatus?.includes('BLOCKED') ? 'neg' : 'muted'}>{preview?.label}</span></div>
-                      <div className="tag-row">
+                      <div className={`tag-row ${isHardStale ? 'stale-visual-muted' : ''}`}>
                         <div className={`readiness-chip readiness-${(readiness?.finalDecision ?? 'PAPER_ONLY').toLowerCase()}`}>{readiness?.finalDecision ?? 'PAPER_ONLY'}</div>
                         {readinessChips.map((chip) => <div key={`${signal.symbol}-${chip.label}`} title={chip.tooltip} className={`summary-chip ${chip.tone === 'downgrade' ? 'summary-chip-downgrade' : 'summary-chip-validation'}`}>{chip.label}</div>)}
                         <button className="ghost-btn small-btn" onClick={() => setSelectedReadinessSymbol(signal.symbol)}>详情</button>
                       </div>
                       <div className="muted">{signal.environment} · {signal.strategy} · Prio {preview?.priorityScore.toFixed(2)}</div>
+                      <div className={`freshness-inline ${signalFreshness.className}`}>时效：{signalFreshness.label}</div>
                       <div className="why-now compact">{preview?.whyNow}</div>
                       <div className="muted readiness-explain">Why not Top 1: {readinessReason}</div>
                     </div>
@@ -1272,20 +1486,47 @@ export default function App() {
                 <h3>告警预览 / 最近提醒</h3>
                 <span className="muted">正式主链路为 app-native Feishu webhook notifier；这里展示最近 alert 内容与状态。</span>
               </div>
+              <div className="moonshot-alert-summary" style={{ marginBottom: 12 }}>
+                <span className="summary-chip moonshot-tier-a">A {alertEvents.filter((item) => /执行等级：A/.test(item.body ?? '')).length}</span>
+                <span className="summary-chip moonshot-tier-b">B {alertEvents.filter((item) => /执行等级：B/.test(item.body ?? '')).length}</span>
+                <span className="summary-chip moonshot-tier-c">C {alertEvents.filter((item) => /执行等级：C/.test(item.body ?? '')).length}</span>
+                <span className="summary-chip moonshot-tier-r">R {alertEvents.filter((item) => /执行等级：R/.test(item.body ?? '')).length}</span>
+                <span className="summary-chip summary-chip-validation">当前有效 {alertEvents.filter((item) => !getAlertValidityMeta(item, countdownNow).expired).length}</span>
+                <span className="summary-chip summary-chip-downgrade">历史过期 {alertEvents.filter((item) => getAlertValidityMeta(item, countdownNow).expired).length}</span>
+              </div>
               <div className="alert-feed">
-                {alertEvents.slice(0, 8).map((item) => {
+                {[...alertEvents.filter((item) => !getAlertValidityMeta(item, countdownNow).expired).slice(0, 6), ...alertEvents.filter((item) => getAlertValidityMeta(item, countdownNow).expired).slice(0, 4)].map((item) => {
                   const alertSymbol = extractSymbolFromAlertTitle(item.title)
                   const alertReadiness = alertSymbol ? signalReadinessEvaluations[alertSymbol] : null
                   const alertReadinessReason = alertReadiness?.degradeReason ?? alertReadiness?.validationReasons?.[0] ?? alertReadiness?.hardBlockReasons?.[0] ?? alertReadiness?.softBlockReasons?.[0] ?? alertReadiness?.fullReadyChecks?.find((check) => !check.passed)?.message ?? alertReadiness?.trialReadyChecks?.find((check) => !check.passed)?.message ?? null
                   const alertReadinessChips = getReadinessSummaryChips(alertReadiness)
+                  const moonshotMeta = parseMoonshotAlertMeta(item.title, item.body)
+                  const alertValidity = getAlertValidityMeta(item, countdownNow)
                   return (
-                  <div key={item.id} className={`alert-item ${highlightedAlertId === item.id ? 'alert-item-flash' : ''}`}>
+                  <div key={item.id} className={`alert-item ${highlightedAlertId === item.id ? 'alert-item-flash' : ''} ${alertValidity.expired ? 'stale-visual-muted' : ''}`}>
                     <div className="panel-header">
                       <div>
                         <div><strong>{item.title}</strong></div>
+                        {moonshotMeta.isMoonshot ? (
+                          <>
+                            <div className="moonshot-alert-summary">
+                              {moonshotMeta.tone ? <span className={`summary-chip moonshot-tone-${moonshotMeta.tone.toLowerCase()}`}>{moonshotMeta.tone}</span> : null}
+                              {moonshotMeta.executionTier ? <span className={`summary-chip moonshot-tier-${moonshotMeta.executionTier.toLowerCase()}`}>{moonshotMeta.executionTier}</span> : null}
+                              {moonshotMeta.priority != null ? <span className="summary-chip">P{moonshotMeta.priority}</span> : null}
+                              {moonshotMeta.transition ? <span className="summary-chip summary-chip-validation">{moonshotMeta.transition}</span> : null}
+                            </div>
+                            {moonshotMeta.decisionLine ? <div className="muted"><strong>{moonshotMeta.decisionLine}</strong></div> : null}
+                            {moonshotMeta.reason ? <div className="muted">判定原因：{moonshotMeta.reason}</div> : null}
+                          </>
+                        ) : null}
                         <div className="muted">状态：{getAlertStatusLabel(item)}</div>
+                        <div className={`freshness-inline ${alertValidity.className}`}>告警状态：{alertValidity.label}</div>
+                        <div className="muted">告警时间：{formatDateTime(item.createdAt)}（{formatRelativeAge(item.createdAt, countdownNow)}）</div>
+                        <div className="muted">有效窗口：{alertValidity.windowLabel}</div>
+                        {item.sentAt ? <div className="muted">发送时间：{formatDateTime(item.sentAt)}（{formatRelativeAge(item.sentAt, countdownNow)}）</div> : null}
+                        {item.ackedAt ? <div className="muted">确认时间：{formatDateTime(item.ackedAt)}（{formatRelativeAge(item.ackedAt, countdownNow)}）</div> : null}
                         {alertReadiness ? (
-                          <div className="tag-row" style={{ marginTop: 6 }}>
+                          <div className={`tag-row ${isHardStale ? 'stale-visual-muted' : ''}`} style={{ marginTop: 6 }}>
                             <div className={`readiness-chip readiness-${alertReadiness.finalDecision.toLowerCase()}`}>{alertReadiness.finalDecision}</div>
                             {alertReadinessChips.map((chip) => <div key={`${item.id}-${chip.label}`} title={chip.tooltip} className={`summary-chip ${chip.tone === 'downgrade' ? 'summary-chip-downgrade' : 'summary-chip-validation'}`}>{chip.label}</div>)}
                             {alertSymbol ? <button className="ghost-btn small-btn" onClick={() => setSelectedReadinessSymbol(alertSymbol)}>详情</button> : null}
@@ -1307,7 +1548,11 @@ export default function App() {
         ) : null}
 
         <section className="grid two">
-        <PaperTradingPanel topSignal={topSignal} trades={paperTrades} equityCurve={paperEquityCurve} gateSummary={paperGateSummary} executionStats={executionStatusStats} readinessRuntimeState={readinessRuntimeState} validationStatsBySetup={validationStatsBySetup} onSelectExecutionStatus={setHighlightedExecutionStatus} onSelectMatchReason={setHighlightedMatchReason} onAddTrade={addPaperTrade} onUpdateStatus={updatePaperTradeStatus} />
+        <MoonshotRadarPanel radar={moonshotRadar} />
+        <PaperTradingPanel topSignal={topSignal} trades={paperTrades} equityCurve={paperEquityCurve} gateSummary={paperGateSummary} executionStats={executionStatusStats} readinessRuntimeState={readinessRuntimeState} validationStatsBySetup={validationStatsBySetup} onSelectExecutionStatus={setHighlightedExecutionStatus} onSelectMatchReason={setHighlightedMatchReason} onAddTrade={addPaperTrade} onUpdateStatus={updatePaperTradeStatus} disableAddTrade={!canExecuteSignalActions} />
+        </section>
+
+        <section className="grid two">
         <div className="card">
           <div className="panel-header">
             <h3>Readiness Detail</h3>
@@ -1382,7 +1627,7 @@ export default function App() {
         </div>
 
         <section>
-          <SignalTable signals={signals} gatePreviews={signalGatePreviews} readinessEvaluations={signalReadinessEvaluations} highlightedExecutionStatus={highlightedExecutionStatus} highlightedMatchReason={highlightedMatchReason} onClearExecutionStatus={() => setHighlightedExecutionStatus('ALL')} onClearMatchReason={() => setHighlightedMatchReason('ALL')} onAddPaperTrade={addPaperTrade} onOpenReadinessDetail={setSelectedReadinessSymbol} />
+          <SignalTable signals={signals} gatePreviews={signalGatePreviews} readinessEvaluations={signalReadinessEvaluations} highlightedExecutionStatus={highlightedExecutionStatus} highlightedMatchReason={highlightedMatchReason} onClearExecutionStatus={() => setHighlightedExecutionStatus('ALL')} onClearMatchReason={() => setHighlightedMatchReason('ALL')} onAddPaperTrade={addPaperTrade} onOpenReadinessDetail={setSelectedReadinessSymbol} dashboardRefreshedAt={dashboardRefreshedAt} now={countdownNow} disablePaperActions={!canExecuteSignalActions} muteReadinessVisuals={isHardStale} />
         </section>
 
         <section>

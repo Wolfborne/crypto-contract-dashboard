@@ -7,6 +7,7 @@ import { emitAlertsFromSnapshot } from './alert-runtime.mjs'
 import { buildServerExecutionLayer } from './gate-runtime.mjs'
 import { createFeishuWebhookNotifier } from './notifier-feishu.mjs'
 import { readReadinessState, updateReadinessStateOnTradeClose } from './readiness-state.mjs'
+import { buildMoonshotRuntimeState } from './moonshot-scanner.mjs'
 
 const SYMBOLS = [
   { symbol: 'BTCUSDT', label: 'BTC', coingeckoId: 'bitcoin', sector: 'Store of Value' },
@@ -365,6 +366,11 @@ app.get('/api/alerts', (req, res) => {
   res.json(status ? alerts.filter((item) => item.status === status) : alerts)
 })
 
+app.get('/api/moonshot/candidates', (_, res) => {
+  const runtime = readRuntimeState()
+  res.json(runtime?.payload?.moonshotRadar ?? { scannedAt: null, sources: {}, candidates: [], alerts: [] })
+})
+
 async function tryDeliverAlert(alert) {
   const nowIso = new Date().toISOString()
   if (!feishuNotifier.enabled) {
@@ -451,8 +457,8 @@ app.post('/api/notifier/test-send', async (_, res) => {
     id: crypto.randomUUID(),
     createdAt: new Date().toISOString(),
     kind: 'LIVE_OK',
-    title: '[测试发送] Feishu notifier 连通性验证',
-    body: '这是一条来自 crypto-contract-dashboard 独立应用的 Feishu webhook 测试消息。\n\n关键词：crypto\n\n如果你收到了它，说明 app-native Feishu notifier 已成功连通。',
+    title: '[测试发送 / v2-time-meta-check] Feishu notifier 连通性验证',
+    body: '这是一条来自 crypto-contract-dashboard 独立应用的 Feishu webhook 测试消息。\n\n唯一标记：v2-time-meta-check\n关键词：crypto\n\n如果你收到了它，并且消息里同时带有告警时间 / 距今 / 有效窗口 / 当前状态，说明当前 app-native Feishu notifier 新链路已成功生效。',
     signature: `test-send:${Date.now()}`,
     status: 'PENDING',
   }
@@ -472,6 +478,7 @@ async function refreshRuntimeMarketData() {
     trendThreshold: 4,
     extremeVolatilityThreshold: 7,
   }
+  let moonshotRadar = state?.payload?.moonshotRadar ?? { scannedAt: null, sources: {}, candidates: [], alerts: [] }
   const previousStatus = state?.payload?.dataSourceStatus?.coingecko ?? null
   const cgIds = SYMBOLS.map((s) => s.coingeckoId).join(',')
   const fearGreed = await cachedJson('fear-greed', 'https://api.alternative.me/fng/').catch(() => ({ data: [{ value: 50 }] }))
@@ -496,6 +503,11 @@ async function refreshRuntimeMarketData() {
     }
   }
   const marketMap = new Map(coingecko.map((coin) => [coin.id, { marketCap: coin.market_cap, marketCapRank: coin.market_cap_rank }]))
+  try {
+    moonshotRadar = await buildMoonshotRuntimeState()
+  } catch (error) {
+    console.warn('moonshot radar refresh failed', error)
+  }
   const snapshots = await Promise.all(SYMBOLS.map(async (cfg) => {
     const [ticker, oi, funding, klines] = await Promise.all([
       cachedJson(`ticker:${cfg.symbol}`, `https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${cfg.symbol}`),
@@ -543,6 +555,7 @@ async function refreshRuntimeMarketData() {
         ...(state?.payload?.dataSourceStatus ?? {}),
         coingecko: coingeckoStatus,
       },
+      moonshotRadar,
       ...executionLayer,
     },
   })
@@ -589,8 +602,10 @@ async function autonomousEmitFromRuntime() {
     paperGateSummary: state.payload.paperGateSummary,
     settings: state.payload.settings,
   })
-  if (!emitted.length) return
-  await appendAlerts(emitted)
+  const moonshotAlerts = Array.isArray(state.payload.moonshotRadar?.alerts) ? state.payload.moonshotRadar.alerts : []
+  const combined = [...emitted, ...moonshotAlerts]
+  if (!combined.length) return
+  await appendAlerts(combined)
 }
 
 app.post('/api/alerts/:id/ack', (req, res) => {

@@ -68,7 +68,8 @@ export function PaperTradingPanel({
   onSelectExecutionStatus,
   onSelectMatchReason,
   onAddTrade,
-  onUpdateStatus
+  onUpdateStatus,
+  disableAddTrade
 }: {
   topSignal: DashboardSignal | undefined
   trades: PaperTrade[]
@@ -81,6 +82,7 @@ export function PaperTradingPanel({
   onSelectMatchReason?: (reason: 'ALL' | string) => void
   onAddTrade: (signal: DashboardSignal) => void
   onUpdateStatus: (id: string, status: PaperTrade['status']) => void
+  disableAddTrade?: boolean
 }) {
   const [timeFilter, setTimeFilter] = useState<'ALL' | '7D' | '30D'>('ALL')
   const [environmentFilter, setEnvironmentFilter] = useState<'ALL' | EnvironmentType>('ALL')
@@ -195,7 +197,7 @@ export function PaperTradingPanel({
             <div style={{ marginTop: 8 }}><span className="muted">备注：</span>{topSignal.note}</div>
           </div>
           <div style={{ marginTop: 12 }}>
-            <button className="ghost-btn" onClick={() => onAddTrade(topSignal)}>加入 Paper Ledger</button>
+            <button className="ghost-btn" disabled={disableAddTrade} title={disableAddTrade ? '数据已过期，请先刷新' : undefined} onClick={() => onAddTrade(topSignal)}>加入 Paper Ledger</button>
           </div>
         </div>
       ) : null}

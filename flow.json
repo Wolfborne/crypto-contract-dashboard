@@ -1,0 +1,37 @@
+{
+  "name": "crypto-contract-dashboard-v2",
+  "business_goal": "Turn a discretionary low-leverage crypto futures framework into a repeatable decision dashboard using public market data.",
+  "trigger": "User opens the dashboard to scan market regime, candidate setups, sector rotation, and risk sizing before placing trades.",
+  "inputs": [
+    "Public exchange market data",
+    "Public sentiment data",
+    "User-defined risk parameters",
+    "Manual trade journal entries"
+  ],
+  "target_systems": [
+    "Binance Futures public API",
+    "CoinGecko public API",
+    "Alternative.me Fear & Greed API",
+    "Browser localStorage"
+  ],
+  "steps": [
+    { "type": "extract", "name": "Fetch market snapshots", "approval_required": false },
+    { "type": "transform", "name": "Compute regime and strategy candidates", "approval_required": false },
+    { "type": "extract", "name": "Fetch sector and market-cap context", "approval_required": false },
+    { "type": "transform", "name": "Render candidate tables, rotation view, and risk metrics", "approval_required": false },
+    { "type": "record_output", "name": "Store user trade journal entries locally", "approval_required": false }
+  ],
+  "checkpoints": [],
+  "outputs": [
+    "Dashboard with regime summary",
+    "Signal candidate table",
+    "Sector rotation board",
+    "Position sizing calculator",
+    "Trade journal and performance stats"
+  ],
+  "failure_and_retry_rules": [
+    "If one API fails, show degraded dashboard state instead of blank page.",
+    "Use cached browser data for journal and adjustable settings.",
+    "Keep the app read-only with respect to exchanges; no trade execution."
+  ]
+}
